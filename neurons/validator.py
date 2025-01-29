@@ -24,7 +24,7 @@ from validator.network_operations import (
 )
 from validator.metagraph import MetagraphManager
 from validator.nats import MinersNATSPublisher
-
+from validator.routing_table import RoutingTable
 
 logger = get_logger(__name__)
 
@@ -61,6 +61,8 @@ class Validator:
             subtensor_address=self.config.SUBTENSOR_ADDRESS,
         )
 
+        self.routing_table = RoutingTable()
+
         self.metagraph = Metagraph(netuid=self.config.NETUID, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
@@ -70,8 +72,6 @@ class Validator:
         self.NATSPublisher = MinersNATSPublisher(
             self
         )  # Not used yet (Depends on Nats on TEE side)
-
-        self.connected_tee_list: List[str] = []
 
     async def start(self) -> None:
         """Start the validator service"""

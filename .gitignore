@@ -20,3 +20,5 @@ data/*
 *.pyc
 notebooks/.DS_Store
 .conda
+miner_tee_addresses.db
+test_miner_tee_addresses.db

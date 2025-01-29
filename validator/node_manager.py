@@ -5,6 +5,7 @@ from cryptography.fernet import Fernet
 from fiber.logging_utils import get_logger
 import os
 from typing import TYPE_CHECKING
+import sqlite3
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -47,7 +48,9 @@ class NodeManager:
                 )
                 return False
             logger.info(
-                f"************* Handshake node data address: {miner_address}, symmetric_key_str: {symmetric_key_str}, symmetric_key_uuid: {symmetric_key_uuid}, "
+                f"************* Handshake node data address: {miner_address}, "
+                f"symmetric_key_str: {symmetric_key_str}, "
+                f"symmetric_key_uuid: {symmetric_key_uuid}, "
             )
 
             self.connected_nodes[miner_hotkey] = Node(
@@ -140,10 +143,33 @@ class NodeManager:
             logger.error(f"Failed to get tee address: {str(e)}")
 
     async def update_tee_list(self):
+        routing_table = self.validator.routing_table
         for hotkey, _ in self.connected_nodes.items():
             if hotkey in self.validator.metagraph.nodes:
                 node = self.validator.metagraph.nodes[hotkey]
-                tee_address = await self.get_tee_address(node)
+                tee_addresses = await self.get_tee_address(node)
+                logger.info(f"Hotkey: {hotkey}, returned addresses: {tee_addresses}")
 
-                if tee_address not in self.validator.connected_tee_list:
-                    self.validator.connected_tee_list.append(tee_address)
+                # Cleaning DB from addresses under this hotkey
+                routing_table.clear_miner(
+                    hotkey=node.hotkey,
+                )
+                logger.info(f"Cleanning hotkey {hotkey} addresses from DB")
+                if tee_addresses:
+                    for tee_address in tee_addresses.split(","):
+                        tee_address = tee_address.strip()
+                        try:
+                            routing_table.add_miner_address(
+                                hotkey, node.node_id, tee_address
+                            )
+
+                            logger.info(
+                                f"Hotkey: {hotkey} stored address {tee_address} into DB successfuly."
+                            )
+                        except sqlite3.IntegrityError:
+                            logger.info(
+                                f"Address {tee_address} already exists in the "
+                                "routing table."
+                            )
+                else:
+                    print(f"No addresses returned from hotkey: {node.hotkey}")
