@@ -30,8 +30,7 @@ logger = get_logger(__name__)
 
 BLOCKS_PER_WEIGHT_SETTING = 100
 BLOCK_TIME_SECONDS = 12
-
-SYNC_LOOP_CADENCE_SECONDS = 6  # 1 minute
+SYNC_LOOP_CADENCE_SECONDS = 10
 
 
 class Validator:
@@ -70,7 +69,7 @@ class Validator:
         self.background_tasks = BackgroundTasks(validator=self)
         self.metagraph_manager = MetagraphManager(validator=self)
         self.NATSPublisher = MinersNATSPublisher(
-            self
+            validator=self
         )  # Not used yet (Depends on Nats on TEE side)
 
     async def start(self) -> None:
