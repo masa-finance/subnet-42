@@ -133,43 +133,10 @@ class NodeManager:
             del self.connected_nodes[hotkey]
 
         self.validator.connected_tee_list = []
-        await self.update_tee_list()
 
-    async def get_tee_address(self, node: Node) -> Optional[str]:
-        endpoint = "/tee"
+    async def get_node_information(self, node: Node) -> Optional[str]:
+        endpoint = "/get_information"
         try:
             return await self.validator.make_non_streamed_get(node, endpoint)
         except Exception as e:
             logger.error(f"Failed to get tee address: {str(e)}")
-
-    async def update_tee_list(self):
-        routing_table = self.validator.routing_table
-        for hotkey, _ in self.connected_nodes.items():
-            if hotkey in self.validator.metagraph.nodes:
-                node = self.validator.metagraph.nodes[hotkey]
-                tee_addresses = await self.get_tee_address(node)
-                logger.info(f"Hotkey: {hotkey}, returned addresses: {tee_addresses}")
-
-                # Cleaning DB from addresses under this hotkey
-                routing_table.clear_miner(
-                    hotkey=node.hotkey,
-                )
-                logger.info(f"Cleanning hotkey {hotkey} addresses from DB")
-                if tee_addresses:
-                    for tee_address in tee_addresses.split(","):
-                        tee_address = tee_address.strip()
-                        try:
-                            routing_table.add_miner_address(
-                                hotkey, node.node_id, tee_address
-                            )
-
-                            logger.info(
-                                f"Hotkey: {hotkey} stored address {tee_address} into DB successfuly."
-                            )
-                        except sqlite3.IntegrityError:
-                            logger.info(
-                                f"Address {tee_address} already exists in the "
-                                "routing table."
-                            )
-                else:
-                    print(f"No addresses returned from hotkey: {node.hotkey}")
