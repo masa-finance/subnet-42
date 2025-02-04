@@ -130,11 +130,6 @@ class AgentMiner:
             logger.error(f"Failed to get node from metagraph: {e}")
             return None
 
-    def get_tee_address(self) -> Optional[str]:
-        """Get TEE address from environment variable"""
-        tee_address = os.getenv("MINER_TEE_ADDRESS", None)
-        return tee_address
-
     async def stop(self) -> None:
         """Cleanup and shutdown"""
         if self.server:
@@ -177,11 +172,4 @@ class AgentMiner:
             exchange_symmetric_key,
             methods=["POST"],
             tags=["encryption"],
-        )
-
-        self.app.add_api_route(
-            "/tee",
-            self.get_tee_address,
-            methods=["GET"],
-            tags=["setup"],
         )
