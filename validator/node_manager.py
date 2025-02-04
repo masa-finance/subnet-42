@@ -5,7 +5,6 @@ from cryptography.fernet import Fernet
 from fiber.logging_utils import get_logger
 import os
 from typing import TYPE_CHECKING
-import sqlite3
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
