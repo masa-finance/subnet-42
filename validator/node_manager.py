@@ -130,20 +130,3 @@ class NodeManager:
             del self.connected_nodes[hotkey]
 
         self.validator.connected_tee_list = []
-        await self.update_tee_list()
-
-    async def get_tee_address(self, node: Node) -> Optional[str]:
-        endpoint = "/tee"
-        try:
-            return await self.validator.make_non_streamed_get(node, endpoint)
-        except Exception as e:
-            logger.error(f"Failed to get tee address: {str(e)}")
-
-    async def update_tee_list(self):
-        for hotkey, _ in self.connected_nodes.items():
-            if hotkey in self.validator.metagraph.nodes:
-                node = self.validator.metagraph.nodes[hotkey]
-                tee_address = await self.get_tee_address(node)
-
-                if tee_address not in self.validator.connected_tee_list:
-                    self.validator.connected_tee_list.append(tee_address)
