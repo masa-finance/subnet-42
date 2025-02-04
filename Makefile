@@ -10,4 +10,9 @@ test-routing-table:
 test-metagraph-unit:
 	pytest tests/test_metagraph_unit.py
 
+test-metagraph-e2e:
+	pytest tests/test_metagraph_e2e.py --log-cli-level=INFO
 
+test-metagraph:
+	$(MAKE) test-metagraph-unit
+	$(MAKE) test-metagraph-e2e

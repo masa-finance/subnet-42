@@ -21,14 +21,14 @@ def metagraph_manager(mock_validator):
     return MetagraphManager(validator=mock_validator)
 
 
-def test_sync_substrate(metagraph_manager, mock_validator):
+def test_sync_substrate(mock_validator, metagraph_manager):
     # Test sync_substrate method
     metagraph_manager.sync_substrate()
     mock_validator.substrate = mock_validator.substrate  # Ensure substrate is set
 
 
 @pytest.mark.asyncio
-async def test_sync_metagraph(metagraph_manager, mock_validator):
+async def test_sync_metagraph(mock_validator, metagraph_manager):
     # Mock the async method remove_disconnected_nodes
     mock_validator.node_manager.remove_disconnected_nodes = AsyncMock()
 
