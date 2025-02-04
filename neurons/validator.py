@@ -46,7 +46,7 @@ class Validator:
             self.config.VALIDATOR_WALLET_NAME, self.config.VALIDATOR_HOTKEY_NAME
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
         self.subtensor_address = os.getenv(

@@ -37,7 +37,7 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
         self.httpx_client: Optional[httpx.AsyncClient] = None
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
