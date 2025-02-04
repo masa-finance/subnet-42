@@ -15,7 +15,6 @@ from fastapi import FastAPI
 
 from validator.config import Config
 from validator.http_client import HttpClientManager
-from validator.node_manager import NodeManager
 from validator.background_tasks import BackgroundTasks
 from validator.api_routes import register_routes
 from validator.network_operations import (
@@ -23,6 +22,7 @@ from validator.network_operations import (
     make_non_streamed_post,
 )
 from validator.metagraph import MetagraphManager
+from validator.node_manager import NodeManager
 from validator.nats import MinersNATSPublisher
 from validator.routing_table import RoutingTable
 
