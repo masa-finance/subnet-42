@@ -15,7 +15,6 @@ from fastapi import FastAPI
 
 from validator.config import Config
 from validator.http_client import HttpClientManager
-from validator.node_manager import NodeManager
 from validator.background_tasks import BackgroundTasks
 from validator.api_routes import register_routes
 from validator.network_operations import (
@@ -23,15 +22,14 @@ from validator.network_operations import (
     make_non_streamed_post,
 )
 from validator.metagraph import MetagraphManager
+from validator.node_manager import NodeManager
 from validator.nats import MinersNATSPublisher
-
 
 logger = get_logger(__name__)
 
 BLOCKS_PER_WEIGHT_SETTING = 100
 BLOCK_TIME_SECONDS = 12
-
-SYNC_LOOP_CADENCE_SECONDS = 6  # 1 minute
+SYNC_LOOP_CADENCE_SECONDS = 10
 
 
 class Validator:
@@ -46,7 +44,7 @@ class Validator:
             self.config.VALIDATOR_WALLET_NAME, self.config.VALIDATOR_HOTKEY_NAME
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
         self.subtensor_address = os.getenv(
@@ -68,10 +66,8 @@ class Validator:
         self.background_tasks = BackgroundTasks(validator=self)
         self.metagraph_manager = MetagraphManager(validator=self)
         self.NATSPublisher = MinersNATSPublisher(
-            self
+            validator=self
         )  # Not used yet (Depends on Nats on TEE side)
-
-        self.connected_tee_list: List[str] = []
 
     async def start(self) -> None:
         """Start the validator service"""

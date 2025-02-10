@@ -37,7 +37,7 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
         self.httpx_client: Optional[httpx.AsyncClient] = None
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
@@ -130,10 +130,10 @@ class AgentMiner:
             logger.error(f"Failed to get node from metagraph: {e}")
             return None
 
-    def get_tee_address(self) -> Optional[str]:
-        """Get TEE address from environment variable"""
-        tee_address = os.getenv("MINER_TEE_ADDRESS", None)
-        return tee_address
+    def information_handler(self) -> Optional[str]:
+        """Send information back to the validator"""
+        some_info = os.getenv("SOME_INFO", "no information provided")
+        return some_info
 
     async def stop(self) -> None:
         """Cleanup and shutdown"""
@@ -180,8 +180,8 @@ class AgentMiner:
         )
 
         self.app.add_api_route(
-            "/tee",
-            self.get_tee_address,
+            "/get_information",
+            self.information_handler,
             methods=["GET"],
             tags=["setup"],
         )
