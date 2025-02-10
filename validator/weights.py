@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any
+from typing import List, Tuple
 import asyncio
 from fiber.chain import weights, interface
 from fiber.logging_utils import get_logger
@@ -20,11 +20,22 @@ class WeightsManager:
         self,
         validator: "Validator",
     ):
+        """
+        Initialize the WeightsManager with a validator instance.
+
+        :param validator: The validator instance to be used for weight calculations.
+        """
         self.validator = validator
 
     def calculate_weights(
         self, node_data: List[NodeData]
     ) -> Tuple[List[int], List[float]]:
+        """
+        Calculate weights for nodes based on their post counts.
+
+        :param node_data: List of NodeData objects containing node information.
+        :return: A tuple containing a list of node IDs and their corresponding weights.
+        """
         miner_scores = {}
         if node_data:
             min_posts = min(node.posts for node in node_data)
@@ -41,6 +52,11 @@ class WeightsManager:
         return uids, weights
 
     async def set_weights(self, node_data: List[NodeData]) -> None:
+        """
+        Set weights for nodes on the blockchain, ensuring the minimum interval between updates is respected.
+
+        :param node_data: List of NodeData objects containing node information.
+        """
         self.validator.substrate = interface.get_substrate(
             subtensor_address=self.validator.substrate.url
         )

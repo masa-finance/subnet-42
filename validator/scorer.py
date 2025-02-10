@@ -7,6 +7,11 @@ if TYPE_CHECKING:
 
 class NodeDataScorer:
     def __init__(self, validator: "Validator"):
+        """
+        Initialize the NodeDataScorer with a validator instance and a stub for node data.
+
+        :param validator: The validator instance to be used for scoring node data.
+        """
         self.validator = validator
         # This can be replaced with a service client or API call in the future
         self.node_data_stub = [
@@ -15,7 +20,12 @@ class NodeDataScorer:
         ]
 
     def get_node_data(self):
-        # In the future, replace this with a call to fetch data from an external service
+        """
+        Retrieve node data. Currently returns a stub list of NodeData objects.
+        In the future, this method should fetch data from an external service.
+
+        :return: A list of NodeData objects containing node information.
+        """
         return self.node_data_stub
 
 
