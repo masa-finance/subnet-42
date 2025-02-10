@@ -9,14 +9,19 @@ from interfaces.types import NodeData
 
 logger = get_logger(__name__)
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from neurons.validator import Validator
 
 
 class WeightsManager:
     def __init__(
         self,
-        validator: Any,
+        validator: "Validator",
     ):
         self.validator = validator
+
     def calculate_weights(
         self, node_data: List[NodeData]
     ) -> Tuple[List[int], List[float]]:
@@ -35,9 +40,7 @@ class WeightsManager:
         weights = [miner_scores[uid] for uid in uids]
         return uids, weights
 
-
-
-    async def set_weights(self, scored_posts: List[Tweet]) -> None:
+    async def set_weights(self, node_data: List[NodeData]) -> None:
         self.validator.substrate = interface.get_substrate(
             subtensor_address=self.validator.substrate.url
         )
@@ -63,7 +66,7 @@ class WeightsManager:
             logger.info(f"Waiting {wait_seconds} seconds...")
             await asyncio.sleep(wait_seconds)
 
-        uids, scores = self.calculate_weights(scored_posts)
+        uids, scores = self.calculate_weights(node_data)
 
         logger.info(f"Uids: {uids} Scores: {scores}")
 
