@@ -13,3 +13,10 @@ test-metagraph-e2e:
 test-metagraph:
 	$(MAKE) test-metagraph-unit
 	$(MAKE) test-metagraph-e2e
+
+test-weights-unit:
+	pytest tests/test_weights_unit.py
+
+test-weights-e2e:
+	pytest tests/test_weights_e2e.py --log-cli-level=INFO
+
