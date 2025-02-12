@@ -1,4 +1,4 @@
-from typing import Optional, List
+# from typing import Optional, List
 from cryptography.fernet import Fernet
 from dataclasses import dataclass, asdict
 
@@ -15,9 +15,3 @@ class ConnectedNode(JSONSerializable):
     symmetric_key: str
     symmetric_key_uuid: str
     fernet: Fernet
-
-
-@dataclass
-class BoundingBox:
-    Coordinates: Optional[List[List[float]]]
-    Type: str

@@ -18,9 +18,6 @@ async def proxy_to_tee(request: Request):
     if not tee_address:
         return {"error": "TEE address not configured."}
 
-    print("ABOUT TO PROXY: ", tee_address)
-    print(request)
-
     async with httpx.AsyncClient() as client:
         response = await client.request(
             method=request.method,
@@ -28,10 +25,6 @@ async def proxy_to_tee(request: Request):
             headers=request.headers,
             content=await request.body(),
         )
-
-        print("***************** RESPONSE")
-        print(response)
-
         # Extract content and return it in a JSON-serializable format
         return {
             "status_code": response.status_code,

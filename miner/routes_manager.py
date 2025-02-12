@@ -21,7 +21,6 @@ class MinerAPI:
             response = await proxy_to_tee(request)
 
             return response
-            # return {"message": "GET request received"}
 
         @self.app.get("/healthcheck")
         def healthcheck_route():
@@ -34,3 +33,7 @@ class MinerAPI:
         @self.app.post("/exchange-symmetric-key")
         def exchange_symmetric_key_route():
             return exchange_symmetric_key()
+
+        @self.app.get("/get_information")
+        def get_information():
+            return self.miner.information_handler()

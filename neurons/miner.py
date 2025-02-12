@@ -33,7 +33,7 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
         self.httpx_client: Optional[httpx.AsyncClient] = None
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
@@ -127,6 +127,11 @@ class AgentMiner:
         except Exception as e:
             logger.error(f"Failed to get node from metagraph: {e}")
             return None
+
+    def information_handler(self) -> Optional[str]:
+        """Send information back to the validator"""
+        some_info = os.getenv("SOME_INFO", "no information provided")
+        return some_info
 
     async def stop(self) -> None:
         """Cleanup and shutdown"""
