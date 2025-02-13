@@ -66,7 +66,7 @@ class WeightsManager:
             [self.validator.netuid, self.validator.keypair.ss58_address],
         ).value
 
-        blocks_since_update = weights._blocks_since_last_update(
+        blocks_since_update = weights.blocks_since_last_update(
             self.validator.substrate, self.validator.netuid, validator_node_id
         )
         min_interval = weights._min_interval_to_set_weights(
