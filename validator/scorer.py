@@ -14,20 +14,6 @@ class NodeDataScorer:
         """
         self.validator = validator
         # This can be replaced with a service client or API call in the future
-        self.node_data_stub = [
-            NodeData(
-                hotkey=self.validator.metagraph.nodes[0].hotkey,
-                posts=10,
-                uptime=100,
-                latency=0.6,
-            ),
-            NodeData(
-                hotkey=self.validator.metagraph.nodes[1].hotkey,
-                posts=500,
-                uptime=200,
-                latency=0.5,
-            ),
-        ]
 
     def get_node_data(self):
         """
@@ -36,14 +22,5 @@ class NodeDataScorer:
 
         :return: A list of NodeData objects containing node information.
         """
-        return self.node_data_stub
-
-
-# # Example usage
-# if __name__ == "__main__":
-#     scorer = NodeDataScorer()
-#     node_data = scorer.get_node_data()
-#     for node in node_data:
-#         print(
-#             f"Node {node.hotkey}: Posts={node.posts}, Uptime={node.uptime}, Latency={node.latency}"
-#         )
+        self.validator.metagraph.sync_nodes()
+        return self.validator.metagraph.nodes
