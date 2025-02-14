@@ -70,13 +70,13 @@ class Validator:
         self.metagraph.sync_nodes()
 
         self.node_manager = NodeManager(validator=self)
+        self.scorer = NodeDataScorer(validator=self)
+        self.weights_manager = WeightsManager(validator=self)
         self.background_tasks = BackgroundTasks(validator=self)
         self.metagraph_manager = MetagraphManager(validator=self)
         self.NATSPublisher = MinersNATSPublisher(
             validator=self
         )  # Not used yet (Depends on Nats on TEE side)
-        self.weights_manager = WeightsManager(validator=self)
-        self.scorer = NodeDataScorer(validator=self)
 
     async def start(self) -> None:
         """Start the validator service"""

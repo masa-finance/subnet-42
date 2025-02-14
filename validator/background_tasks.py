@@ -17,6 +17,7 @@ class BackgroundTasks:
         :param validator: The validator instance for agent registration tasks.
         """
         self.validator = validator
+        self.scorer = validator.scorer  # Initialize the scorer from the validator
 
     async def sync_loop(self, cadence_seconds) -> None:
         """Background task to sync metagraph"""
