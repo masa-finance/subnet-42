@@ -29,11 +29,11 @@ class NodeDataScorer:
         return self.node_data_stub
 
 
-# Example usage
-if __name__ == "__main__":
-    scorer = NodeDataScorer()
-    node_data = scorer.get_node_data()
-    for node in node_data:
-        print(
-            f"Node {node.hotkey}: Posts={node.posts}, Uptime={node.uptime}, Latency={node.latency}"
-        )
+# # Example usage
+# if __name__ == "__main__":
+#     scorer = NodeDataScorer()
+#     node_data = scorer.get_node_data()
+#     for node in node_data:
+#         print(
+#             f"Node {node.hotkey}: Posts={node.posts}, Uptime={node.uptime}, Latency={node.latency}"
+#         )

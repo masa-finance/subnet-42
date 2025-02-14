@@ -76,7 +76,7 @@ class Validator:
             validator=self
         )  # Not used yet (Depends on Nats on TEE side)
         self.weights_manager = WeightsManager(validator=self)
-        self.scorer = NodeDataScorer(valdiator=self)
+        self.scorer = NodeDataScorer(validator=self)
 
     async def start(self) -> None:
         """Start the validator service"""
