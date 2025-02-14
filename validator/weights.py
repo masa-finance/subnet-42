@@ -43,9 +43,14 @@ class WeightsManager:
             post_range = max_posts - min_posts if max_posts != min_posts else 1
 
             for node in node_data:
-                uid = self.validator.metagraph.nodes[node.hotkey].node_id
-                if uid is not None:
-                    miner_scores[uid] = (node.posts - min_posts) / post_range
+                try:
+                    uid = self.validator.metagraph.nodes[node.hotkey].node_id
+                    if uid is not None:
+                        miner_scores[uid] = (node.posts - min_posts) / post_range
+                except KeyError:
+                    logger.error(
+                        f"Node with hotkey '{node.hotkey}' not found in metagraph."
+                    )
 
         uids = sorted(miner_scores.keys())
         weights = [miner_scores[uid] for uid in uids]

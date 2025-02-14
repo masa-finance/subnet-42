@@ -15,8 +15,18 @@ class NodeDataScorer:
         self.validator = validator
         # This can be replaced with a service client or API call in the future
         self.node_data_stub = [
-            NodeData(hotkey="node1", posts=10, uptime=100, latency=50),
-            NodeData(hotkey="node2", posts=20, uptime=200, latency=30),
+            NodeData(
+                hotkey=self.validator.metagraph.nodes[0].hotkey,
+                posts=10,
+                uptime=100,
+                latency=0.6,
+            ),
+            NodeData(
+                hotkey=self.validator.metagraph.nodes[1].hotkey,
+                posts=500,
+                uptime=200,
+                latency=0.5,
+            ),
         ]
 
     def get_node_data(self):
