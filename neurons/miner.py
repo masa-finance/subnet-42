@@ -9,16 +9,12 @@ from fiber.chain import chain_utils, post_ip_to_chain, interface
 from fiber.chain.metagraph import Metagraph
 from fiber.miner.server import factory_app
 
-from fiber.encrypted.miner.endpoints.handshake import (
-    get_public_key,
-    exchange_symmetric_key,
-)
-
 from fiber.networking.models import NodeWithFernet as Node
 from fiber.logging_utils import get_logger
 
 from typing import Optional
 from fastapi import FastAPI
+from miner.routes_manager import MinerAPI
 
 logger = get_logger(__name__)
 
@@ -57,13 +53,15 @@ class AgentMiner:
 
         self.post_ip_to_chain()
 
+        self.routes = MinerAPI(self)
+
     async def start(self) -> None:
         """Start the miner service"""
 
         try:
             self.httpx_client = httpx.AsyncClient()
             self.app = factory_app(debug=False)
-            self.register_routes()
+            self.routes.register_routes()
 
             config = uvicorn.Config(
                 self.app, host="0.0.0.0", port=self.port, lifespan="on"
@@ -139,49 +137,3 @@ class AgentMiner:
         """Cleanup and shutdown"""
         if self.server:
             await self.server.stop()
-
-    def healthcheck(self):
-        try:
-            info = {
-                "ss58_address": str(self.keypair.ss58_address),
-                "uid": str(self.metagraph.nodes[self.keypair.ss58_address].node_id),
-                "ip": str(self.metagraph.nodes[self.keypair.ss58_address].ip),
-                "port": str(self.metagraph.nodes[self.keypair.ss58_address].port),
-                "netuid": str(self.netuid),
-                "subtensor_network": str(self.subtensor_network),
-                "subtensor_address": str(self.subtensor_address),
-            }
-            return info
-        except Exception as e:
-            logger.error(f"Failed to get miner info: {str(e)}")
-            return None
-
-    def register_routes(self) -> None:
-
-        self.app.add_api_route(
-            "/healthcheck",
-            self.healthcheck,
-            methods=["GET"],
-            tags=["healthcheck"],
-        )
-
-        self.app.add_api_route(
-            "/public-encryption-key",
-            get_public_key,
-            methods=["GET"],
-            tags=["encryption"],
-        )
-
-        self.app.add_api_route(
-            "/exchange-symmetric-key",
-            exchange_symmetric_key,
-            methods=["POST"],
-            tags=["encryption"],
-        )
-
-        self.app.add_api_route(
-            "/get_information",
-            self.information_handler,
-            methods=["GET"],
-            tags=["setup"],
-        )
