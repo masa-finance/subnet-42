@@ -24,11 +24,18 @@ from validator.network_operations import (
 from validator.metagraph import MetagraphManager
 from validator.node_manager import NodeManager
 from validator.nats import MinersNATSPublisher
+from validator.weights import WeightsManager
+from validator.scorer import NodeDataScorer
 
 logger = get_logger(__name__)
 
 BLOCKS_PER_WEIGHT_SETTING = 100
 BLOCK_TIME_SECONDS = 12
+TIME_PER_WEIGHT_SETTING = BLOCKS_PER_WEIGHT_SETTING * BLOCK_TIME_SECONDS
+WEIGHTS_LOOP_CADENCE_SECONDS = (
+    TIME_PER_WEIGHT_SETTING / 2
+)  # half of a weight setting period
+
 SYNC_LOOP_CADENCE_SECONDS = 10
 
 
@@ -63,6 +70,8 @@ class Validator:
         self.metagraph.sync_nodes()
 
         self.node_manager = NodeManager(validator=self)
+        self.scorer = NodeDataScorer(validator=self)
+        self.weights_manager = WeightsManager(validator=self)
         self.background_tasks = BackgroundTasks(validator=self)
         self.metagraph_manager = MetagraphManager(validator=self)
         self.NATSPublisher = MinersNATSPublisher(
@@ -80,6 +89,9 @@ class Validator:
 
             asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
+            )
+            asyncio.create_task(
+                self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
             )
 
             # asyncio.create_task(self.background_tasks.update_tee(10)) not doing this yet

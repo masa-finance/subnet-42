@@ -15,3 +15,11 @@ class ConnectedNode(JSONSerializable):
     symmetric_key: str
     symmetric_key_uuid: str
     fernet: Fernet
+
+
+@dataclass
+class NodeData(JSONSerializable):
+    hotkey: str
+    posts: int
+    uptime: int
+    latency: int
