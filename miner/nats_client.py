@@ -1,38 +1,42 @@
 import asyncio
 import os
 import json
-import logging
 from nats.aio.client import Client as NATS
+from fiber.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class NatsClient:
     def __init__(self):
         self.nc = NATS()
-        logging.info("Initializing NATS client")
+        logger.info("Initializing NATS client")
 
     async def send_connected_nodes(self, miners):
+
         # Connect to the NATS server
-        logging.info("Connecting to NATS server at nats://127.0.0.1:4222")
-        await self.nc.connect("nats://127.0.0.1:4222")
+        nats_url = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
+        logger.info(f"Connecting to NATS server at {nats_url}")
+        await self.nc.connect(nats_url)
 
         try:
             nats_message = json.dumps({"Miners": miners})
             channel_name = os.getenv("TEE_NATS_CHANNEL_NAME", "miners")
 
-            logging.info(
+            logger.info(
                 f"Publishing message to channel '{channel_name}' with {len(miners)} miners"
             )
-            logging.debug(f"Message content: {nats_message}")
+            logger.info(f"Message content: {nats_message}")
 
             await self.nc.publish(channel_name, nats_message.encode())
-            logging.info("Successfully published message")
+            logger.info("Successfully published message")
 
         except Exception as e:
-            logging.error(f"Error publishing message to NATS: {str(e)}")
+            logger.info(f"Error publishing message to NATS: {str(e)}")
             raise
         finally:
             # Ensure the NATS connection is closed
-            logging.info("Closing NATS connection")
+            logger.info("Closing NATS connection")
             await self.nc.close()
 
 

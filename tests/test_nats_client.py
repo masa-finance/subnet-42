@@ -30,7 +30,8 @@ class TestNatsClient(unittest.TestCase):
             self.nats_client.message_handler = MagicMock()
 
             # Connect to the NATS server
-            await self.nc.connect("nats://127.0.0.1:4222")
+            nats_url = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
+            await self.nc.connect(nats_url)
 
             # Subscribe to the channel
             channel_name = os.getenv("TEE_NATS_CHANNEL_NAME", "miners")
