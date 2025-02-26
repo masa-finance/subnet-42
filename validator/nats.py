@@ -1,49 +1,37 @@
-import asyncio
-import os
-import json
-from nats.aio.client import Client as NATS
+from miner.nats_client import NatsClient
 from typing import TYPE_CHECKING
+from fiber.logging_utils import get_logger
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
 
+logger = get_logger(__name__)
+
 
 class MinersNATSPublisher:
     def __init__(self, validator: "Validator"):
-        self.nc = NATS()
+        self.nc = NatsClient()
         self.validator = validator
 
     async def send_connected_nodes(self):
-        # Connect to the NATS server
-        await self.nc.connect(os.getenv("VALIDATOR_TEE_ADDRESS"))
+        # Get connected nodes from the validator
+        connected_nodes = self.validator.node_manager.connected_nodes
 
-        try:
-            # Get connected nodes from the validator
-            connected_nodes = self.validator.connected_tee_list
-            miners_list = (
-                [f"{node.address}:{node.port}" for node in connected_nodes.values()]
-                if connected_nodes
-                else []
-            )
+        if len(connected_nodes) == 0:
+            logger.info("Skipping, no nodes connected")
+            return
 
-            # Create the NATS message in the required format
-            nats_message = json.dumps({"Miners": miners_list})
+        logger.info("Connecting to nats...")
 
-            # Send the JSON message to the TEE_ADDRESS
-            channel_name = os.getenv("TEE_NATS_CHANNEL_NAME", "miners")
-            await self.nc.publish(channel_name, nats_message.encode())
-        finally:
-            # Ensure the NATS connection is closed
-            await self.nc.close()
+        miners_list = (
+            [
+                f"{'http://localhost' if node.ip == '1' else node.ip}:{node.port}"
+                for node in connected_nodes.values()
+            ]
+            if connected_nodes
+            else []
+        )
 
+        logger.info(f"Sending IP list: {miners_list}")
 
-# Example usage
-async def main():
-    # Assuming you have an instance of Validator
-    validator = Validator()
-    nats_client = MinersNATSPublisher(validator)
-    await nats_client.send_connected_nodes()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        await self.nc.send_connected_nodes(miners_list)

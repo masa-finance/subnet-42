@@ -94,7 +94,11 @@ class Validator:
                 self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
             )
 
-            # asyncio.create_task(self.background_tasks.update_tee(10)) not doing this yet
+            asyncio.create_task(
+                self.background_tasks.update_tee(
+                    int(os.getenv("UPDATE_TEE_CADENCE_SECONDS", "60"))
+                )
+            )
 
             config = uvicorn.Config(
                 self.app, host="0.0.0.0", port=self.config.VALIDATOR_PORT, lifespan="on"

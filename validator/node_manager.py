@@ -46,6 +46,7 @@ class NodeManager:
                     f"Failed to establish secure connection with miner {miner_hotkey}"
                 )
                 return False
+
             logger.info(
                 f"************* Handshake node data address: {miner_address}, "
                 f"symmetric_key_str: {symmetric_key_str}, "
@@ -95,7 +96,8 @@ class NodeManager:
             available_nodes = [
                 node
                 for node in nodes_list
-                if node.hotkey not in self.connected_nodes and node.ip != "0.0.0.0"
+                if node.hotkey not in self.connected_nodes
+                and (node.ip != "0.0.0.0" or node.ip != "0.0.0.1")
             ]
 
             logger.info(f"Found {len(available_nodes)} miners")
