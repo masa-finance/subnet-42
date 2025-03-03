@@ -43,8 +43,12 @@ async def proxy_to_tee(request: Request):
             logger.debug(f"Response Headers: {response.headers}")
             logger.debug(f"Response Content: {response.text}")
 
-            # Extract content and return it in a JSON-serializable format
-            return response
+            # Ensure the response is JSON-serializable
+            try:
+                return response.json()
+            except ValueError:
+                logger.debug(f"Non json response: {response.text}")
+                return response.text
     except httpx.ConnectError as e:
         logger.error(f"Connection failed: {str(e)}")
         return {"error": f"Connection failed: {str(e)}"}
