@@ -15,8 +15,14 @@ from fiber.logging_utils import get_logger
 from typing import Optional
 from fastapi import FastAPI
 from miner.routes_manager import MinerAPI
+from threading import Thread
 
 logger = get_logger(__name__)
+
+
+# Function to run the server
+def run_server(app, port):
+    uvicorn.run(app, host="127.0.0.1", port=port)
 
 
 class AgentMiner:
@@ -51,7 +57,7 @@ class AgentMiner:
         self.metagraph = Metagraph(netuid=self.netuid, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
-        self.post_ip_to_chain()
+        # self.post_ip_to_chain()
 
         self.routes = MinerAPI(self)
 
@@ -60,11 +66,10 @@ class AgentMiner:
 
         try:
             self.httpx_client = httpx.AsyncClient()
-            self.app = factory_app(debug=False)
-            self.routes.register_routes()
+            # self.routes.register_routes()
 
             config = uvicorn.Config(
-                self.app, host="0.0.0.0", port=self.port, lifespan="on"
+                self.routes.app, host="0.0.0.0", port=self.port, lifespan="on"
             )
             server = uvicorn.Server(config)
             await server.serve()
@@ -88,36 +93,43 @@ class AgentMiner:
             return "0.0.0.0"
 
     def post_ip_to_chain(self) -> None:
-        node = self.node()
-        if node:
-            if node.ip != self.external_ip or node.port != self.port:
-                logger.info(
-                    f"Posting IP / Port to Chain: Old IP: {node.ip}, Old Port: {node.port}, New IP: {self.external_ip}, New Port: {self.port}"
-                )
-                try:
-                    coldkey_keypair_pub = chain_utils.load_coldkeypub_keypair(
-                        wallet_name=self.wallet_name
+        try:
+            node = self.node()
+            if node:
+                if node.ip != self.external_ip or node.port != self.port:
+                    logger.info(
+                        f"Posting IP / Port to Chain: Old IP: {node.ip}, Old Port: {node.port}, "
+                        f"New IP: {self.external_ip}, New Port: {self.port}"
                     )
-                    post_ip_to_chain.post_node_ip_to_chain(
-                        substrate=self.substrate,
-                        keypair=self.keypair,
-                        netuid=self.netuid,
-                        external_ip=self.external_ip,
-                        external_port=self.port,
-                        coldkey_ss58_address=coldkey_keypair_pub.ss58_address,
+                    try:
+                        coldkey_keypair_pub = chain_utils.load_coldkeypub_keypair(
+                            wallet_name=self.wallet_name
+                        )
+                        post_ip_to_chain.post_node_ip_to_chain(
+                            substrate=self.substrate,
+                            keypair=self.keypair,
+                            netuid=self.netuid,
+                            external_ip=self.external_ip,
+                            external_port=self.port,
+                            coldkey_ss58_address=coldkey_keypair_pub.ss58_address,
+                        )
+                        # library will log success message
+                    except Exception as e:
+                        logger.error(f"Failed to post IP to chain: {e}")
+                        raise Exception("Failed to post IP / Port to chain")
+                else:
+                    logger.info(
+                        f"IP / Port already posted to chain: IP: {node.ip}, "
+                        f"Port: {node.port}"
                     )
-                    # library will log success message
-                except Exception as e:
-                    logger.error(f"Failed to post IP to chain: {e}")
-                    raise Exception("Failed to post IP / Port to chain")
             else:
-                logger.info(
-                    f"IP / Port already posted to chain: IP: {node.ip}, Port: {node.port}"
+                raise Exception(
+                    f"Hotkey not found in metagraph. Ensure {self.keypair.ss58_address} "
+                    f"is registered!"
                 )
-        else:
-            raise Exception(
-                f"Hotkey not found in metagraph.  Ensure {self.keypair.ss58_address} is registered!"
-            )
+        except Exception as e:
+            logger.error(f"Error in post_ip_to_chain: {str(e)}")
+            raise
 
     def node(self) -> Optional[Node]:
         try:

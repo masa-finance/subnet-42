@@ -6,31 +6,51 @@ from fiber.encrypted.miner.endpoints.handshake import (
     exchange_symmetric_key,
 )
 from typing import TYPE_CHECKING
+import logging
 
 
 if TYPE_CHECKING:
     from neurons.miner import AgentMiner
 
 
+logger = logging.getLogger(__name__)
+
+
 async def proxy_to_tee(request: Request):
     """Proxy incoming requests to the TEE address."""
-    tee_address = os.getenv("TEE_ADDRESS")
+    tee_address = os.getenv("MINER_TEE_ADDRESS")
+
+    logger.info(f"Preparing to send a request to TEE address: {tee_address}")
     if not tee_address:
+        logger.error("TEE address not configured.")
         return {"error": "TEE address not configured."}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.request(
-            method=request.method,
-            url=f"{tee_address}{request.url.path.replace('/proxy', '')}",
-            headers=request.headers,
-            content=await request.body(),
-        )
-        # Extract content and return it in a JSON-serializable format
-        return {
-            "status_code": response.status_code,
-            "content": response.json(),
-            "headers": dict(response.headers),
-        }
+    try:
+        async with httpx.AsyncClient() as client:
+            logger.debug(f"Request Method: {request.method}")
+            logger.debug(f"Request URL: {tee_address}{request.url.path}")
+            logger.debug(f"Request Headers: {request.headers}")
+            logger.debug(f"Request Body: {await request.body()}")
+
+            response = await client.request(
+                method=request.method,
+                url=f"{tee_address}{request.url.path.replace('', '')}",
+                headers=request.headers,
+                content=await request.body(),
+            )
+
+            logger.info(f"Received response with status code: {response.status_code}")
+            logger.debug(f"Response Headers: {response.headers}")
+            logger.debug(f"Response Content: {response.text}")
+
+            # Extract content and return it in a JSON-serializable format
+            return response
+    except httpx.ConnectError as e:
+        logger.error(f"Connection failed: {str(e)}")
+        return {"error": f"Connection failed: {str(e)}"}
+    except Exception:
+        logger.exception("An unexpected error occurred.")
+        return {"error": "An unexpected error occurred."}
 
 
 def healthcheck(miner: "AgentMiner"):
