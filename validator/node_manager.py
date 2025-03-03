@@ -134,10 +134,3 @@ class NodeManager:
             del self.connected_nodes[hotkey]
 
         self.validator.connected_tee_list = []
-
-    async def get_node_information(self, node: Node) -> Optional[str]:
-        endpoint = "/get_information"
-        try:
-            return await self.validator.make_non_streamed_get(node, endpoint)
-        except Exception as e:
-            logger.error(f"Failed to get tee address: {str(e)}")
