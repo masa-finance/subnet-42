@@ -1,3 +1,4 @@
+import os
 from miner.nats_client import NatsClient
 from typing import TYPE_CHECKING
 from fiber.logging_utils import get_logger
@@ -23,9 +24,12 @@ class MinersNATSPublisher:
 
         logger.info("Connecting to nats...")
 
+        # This is for testnet only
+        overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", "http://localhost")
+
         miners_list = (
             [
-                f"{'http://localhost' if node.ip == '1' else node.ip}:{node.port}"
+                f"{overwrite_localhost if node.ip == '1' else node.ip}:{node.port}"
                 for node in connected_nodes.values()
             ]
             if connected_nodes
