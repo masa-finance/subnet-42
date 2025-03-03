@@ -15,7 +15,6 @@ from fastapi import FastAPI
 
 from validator.config import Config
 from validator.http_client import HttpClientManager
-from validator.node_manager import NodeManager
 from validator.background_tasks import BackgroundTasks
 from validator.api_routes import register_routes
 from validator.network_operations import (
@@ -23,15 +22,21 @@ from validator.network_operations import (
     make_non_streamed_post,
 )
 from validator.metagraph import MetagraphManager
+from validator.node_manager import NodeManager
 from validator.nats import MinersNATSPublisher
-
+from validator.weights import WeightsManager
+from validator.scorer import NodeDataScorer
 
 logger = get_logger(__name__)
 
 BLOCKS_PER_WEIGHT_SETTING = 100
 BLOCK_TIME_SECONDS = 12
+TIME_PER_WEIGHT_SETTING = BLOCKS_PER_WEIGHT_SETTING * BLOCK_TIME_SECONDS
+WEIGHTS_LOOP_CADENCE_SECONDS = (
+    TIME_PER_WEIGHT_SETTING / 2
+)  # half of a weight setting period
 
-SYNC_LOOP_CADENCE_SECONDS = 6  # 1 minute
+SYNC_LOOP_CADENCE_SECONDS = 10
 
 
 class Validator:
@@ -46,7 +51,7 @@ class Validator:
             self.config.VALIDATOR_WALLET_NAME, self.config.VALIDATOR_HOTKEY_NAME
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
         self.subtensor_address = os.getenv(
@@ -65,13 +70,13 @@ class Validator:
         self.metagraph.sync_nodes()
 
         self.node_manager = NodeManager(validator=self)
+        self.scorer = NodeDataScorer(validator=self)
+        self.weights_manager = WeightsManager(validator=self)
         self.background_tasks = BackgroundTasks(validator=self)
         self.metagraph_manager = MetagraphManager(validator=self)
         self.NATSPublisher = MinersNATSPublisher(
-            self
+            validator=self
         )  # Not used yet (Depends on Nats on TEE side)
-
-        self.connected_tee_list: List[str] = []
 
     async def start(self) -> None:
         """Start the validator service"""
@@ -85,8 +90,15 @@ class Validator:
             asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
             )
+            asyncio.create_task(
+                self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
+            )
 
-            # asyncio.create_task(self.background_tasks.update_tee(10)) not doing this yet
+            asyncio.create_task(
+                self.background_tasks.update_tee(
+                    int(os.getenv("UPDATE_TEE_CADENCE_SECONDS", "60"))
+                )
+            )
 
             config = uvicorn.Config(
                 self.app, host="0.0.0.0", port=self.config.VALIDATOR_PORT, lifespan="on"

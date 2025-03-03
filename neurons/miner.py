@@ -9,18 +9,20 @@ from fiber.chain import chain_utils, post_ip_to_chain, interface
 from fiber.chain.metagraph import Metagraph
 from fiber.miner.server import factory_app
 
-from fiber.encrypted.miner.endpoints.handshake import (
-    get_public_key,
-    exchange_symmetric_key,
-)
-
 from fiber.networking.models import NodeWithFernet as Node
 from fiber.logging_utils import get_logger
 
 from typing import Optional
 from fastapi import FastAPI
+from miner.routes_manager import MinerAPI
+from threading import Thread
 
 logger = get_logger(__name__)
+
+
+# Function to run the server
+def run_server(app, port):
+    uvicorn.run(app, host="127.0.0.1", port=port)
 
 
 class AgentMiner:
@@ -37,7 +39,7 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        self.netuid = int(os.getenv("NETUID", "59"))
+        self.netuid = int(os.getenv("NETUID", "42"))
         self.httpx_client: Optional[httpx.AsyncClient] = None
 
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
@@ -55,18 +57,19 @@ class AgentMiner:
         self.metagraph = Metagraph(netuid=self.netuid, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
-        self.post_ip_to_chain()
+        # self.post_ip_to_chain()
+
+        self.routes = MinerAPI(self)
 
     async def start(self) -> None:
         """Start the miner service"""
 
         try:
             self.httpx_client = httpx.AsyncClient()
-            self.app = factory_app(debug=False)
-            self.register_routes()
+            # self.routes.register_routes()
 
             config = uvicorn.Config(
-                self.app, host="0.0.0.0", port=self.port, lifespan="on"
+                self.routes.app, host="0.0.0.0", port=self.port, lifespan="on"
             )
             server = uvicorn.Server(config)
             await server.serve()
@@ -90,36 +93,43 @@ class AgentMiner:
             return "0.0.0.0"
 
     def post_ip_to_chain(self) -> None:
-        node = self.node()
-        if node:
-            if node.ip != self.external_ip or node.port != self.port:
-                logger.info(
-                    f"Posting IP / Port to Chain: Old IP: {node.ip}, Old Port: {node.port}, New IP: {self.external_ip}, New Port: {self.port}"
-                )
-                try:
-                    coldkey_keypair_pub = chain_utils.load_coldkeypub_keypair(
-                        wallet_name=self.wallet_name
+        try:
+            node = self.node()
+            if node:
+                if node.ip != self.external_ip or node.port != self.port:
+                    logger.info(
+                        f"Posting IP / Port to Chain: Old IP: {node.ip}, Old Port: {node.port}, "
+                        f"New IP: {self.external_ip}, New Port: {self.port}"
                     )
-                    post_ip_to_chain.post_node_ip_to_chain(
-                        substrate=self.substrate,
-                        keypair=self.keypair,
-                        netuid=self.netuid,
-                        external_ip=self.external_ip,
-                        external_port=self.port,
-                        coldkey_ss58_address=coldkey_keypair_pub.ss58_address,
+                    try:
+                        coldkey_keypair_pub = chain_utils.load_coldkeypub_keypair(
+                            wallet_name=self.wallet_name
+                        )
+                        post_ip_to_chain.post_node_ip_to_chain(
+                            substrate=self.substrate,
+                            keypair=self.keypair,
+                            netuid=self.netuid,
+                            external_ip=self.external_ip,
+                            external_port=self.port,
+                            coldkey_ss58_address=coldkey_keypair_pub.ss58_address,
+                        )
+                        # library will log success message
+                    except Exception as e:
+                        logger.error(f"Failed to post IP to chain: {e}")
+                        raise Exception("Failed to post IP / Port to chain")
+                else:
+                    logger.info(
+                        f"IP / Port already posted to chain: IP: {node.ip}, "
+                        f"Port: {node.port}"
                     )
-                    # library will log success message
-                except Exception as e:
-                    logger.error(f"Failed to post IP to chain: {e}")
-                    raise Exception("Failed to post IP / Port to chain")
             else:
-                logger.info(
-                    f"IP / Port already posted to chain: IP: {node.ip}, Port: {node.port}"
+                raise Exception(
+                    f"Hotkey not found in metagraph. Ensure {self.keypair.ss58_address} "
+                    f"is registered!"
                 )
-        else:
-            raise Exception(
-                f"Hotkey not found in metagraph.  Ensure {self.keypair.ss58_address} is registered!"
-            )
+        except Exception as e:
+            logger.error(f"Error in post_ip_to_chain: {str(e)}")
+            raise
 
     def node(self) -> Optional[Node]:
         try:
@@ -130,46 +140,12 @@ class AgentMiner:
             logger.error(f"Failed to get node from metagraph: {e}")
             return None
 
+    def information_handler(self) -> Optional[str]:
+        """Send information back to the validator"""
+        some_info = os.getenv("SOME_INFO", "no information provided")
+        return some_info
+
     async def stop(self) -> None:
         """Cleanup and shutdown"""
         if self.server:
             await self.server.stop()
-
-    def healthcheck(self):
-        try:
-            info = {
-                "ss58_address": str(self.keypair.ss58_address),
-                "uid": str(self.metagraph.nodes[self.keypair.ss58_address].node_id),
-                "ip": str(self.metagraph.nodes[self.keypair.ss58_address].ip),
-                "port": str(self.metagraph.nodes[self.keypair.ss58_address].port),
-                "netuid": str(self.netuid),
-                "subtensor_network": str(self.subtensor_network),
-                "subtensor_address": str(self.subtensor_address),
-            }
-            return info
-        except Exception as e:
-            logger.error(f"Failed to get miner info: {str(e)}")
-            return None
-
-    def register_routes(self) -> None:
-
-        self.app.add_api_route(
-            "/healthcheck",
-            self.healthcheck,
-            methods=["GET"],
-            tags=["healthcheck"],
-        )
-
-        self.app.add_api_route(
-            "/public-encryption-key",
-            get_public_key,
-            methods=["GET"],
-            tags=["encryption"],
-        )
-
-        self.app.add_api_route(
-            "/exchange-symmetric-key",
-            exchange_symmetric_key,
-            methods=["POST"],
-            tags=["encryption"],
-        )
