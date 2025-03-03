@@ -31,22 +31,24 @@ class WeightsManager:
         self, node_data: List[NodeData]
     ) -> Tuple[List[int], List[float]]:
         """
-        Calculate weights for nodes based on their post counts.
+        Calculate weights for nodes based on their twitter_returned_tweets.
 
         :param node_data: List of NodeData objects containing node information.
         :return: A tuple containing a list of node IDs and their corresponding weights.
         """
         miner_scores = {}
         if node_data:
-            min_posts = min(node.posts for node in node_data)
-            max_posts = max(node.posts for node in node_data)
-            post_range = max_posts - min_posts if max_posts != min_posts else 1
+            min_tweets = min(node.twitter_returned_tweets for node in node_data)
+            max_tweets = max(node.twitter_returned_tweets for node in node_data)
+            tweet_range = max_tweets - min_tweets if max_tweets != min_tweets else 1
 
             for node in node_data:
                 try:
                     uid = self.validator.metagraph.nodes[node.hotkey].node_id
                     if uid is not None:
-                        miner_scores[uid] = (node.posts - min_posts) / post_range
+                        miner_scores[uid] = (
+                            node.twitter_returned_tweets - min_tweets
+                        ) / tweet_range
                 except KeyError:
                     logger.error(
                         f"Node with hotkey '{node.hotkey}' not found in metagraph."
