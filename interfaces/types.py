@@ -20,6 +20,15 @@ class ConnectedNode(JSONSerializable):
 @dataclass
 class NodeData(JSONSerializable):
     hotkey: str
-    posts: int
-    uptime: int
-    latency: int
+    boot_time: int
+    last_operation_time: int
+    current_time: int
+    twitter_auth_errors: int
+    twitter_errors: int
+    twitter_ratelimit_errors: int
+    twitter_returned_other: int
+    twitter_returned_profiles: int
+    twitter_returned_tweets: int
+    twitter_scrapes: int
+    web_errors: int
+    web_success: int

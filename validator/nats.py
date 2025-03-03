@@ -25,11 +25,11 @@ class MinersNATSPublisher:
         logger.info("Connecting to nats...")
 
         # This is for testnet only
-        overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", "http://localhost")
+        overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", None)
 
         miners_list = (
             [
-                f"{overwrite_localhost if node.ip == '1' else node.ip}:{node.port}"
+                f"{overwrite_localhost if node.ip == '1' and overwrite_localhost is not None else f"{node.ip}:{node.port}"}"
                 for node in connected_nodes.values()
             ]
             if connected_nodes
