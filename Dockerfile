@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml .
-RUN . "$HOME/.cargo/env" && pip install --no-cache-dir -r <(pip install pip-tools && pip-compile --no-emit-index-url pyproject.toml)
+RUN . "$HOME/.cargo/env" && pip install .
 
 # Set environment variables
 ENV PYTHONPATH=/app

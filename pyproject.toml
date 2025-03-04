@@ -10,8 +10,6 @@ dependencies = [
     "python-dotenv==1.0.1",
     "requests==2.32.3",
     "loguru==0.7.3",
-    "substrate-interface==1.7.10",
-    "async-substrate-interface==1.0.0rc14",
     "py-bip39-bindings==0.1.11",
     "py-ed25519-zebra-bindings==1.1.0",
     "py-sr25519-bindings==0.2.1",
