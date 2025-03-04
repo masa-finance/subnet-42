@@ -11,15 +11,15 @@ services:
       retries: 5
 
   subnet42:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: masaengineering/subnet-42:latest
     environment:
       - ROLE=${ROLE:-miner}
       - NETWORK=${NETWORK:-test}
       - WALLET_PATH=${WALLET_PATH:-/root/.bittensor}
       - WALLET_NAME=${WALLET_NAME:-default}
-      - WALLET_HOTKEY=${WALLET_HOTKEY:-default}
+      - HOTKEY_NAME=${HOTKEY_NAME:-default}
+      - VALIDATOR_WALLET_NAME=${VALIDATOR_WALLET_NAME:-validator}
+      - VALIDATOR_HOTKEY_NAME=${VALIDATOR_HOTKEY_NAME:-default}
       - NATS_URL=nats://nats:4222
       - TEE_WORKER_URL=http://tee-worker:8000
     volumes:

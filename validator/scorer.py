@@ -41,9 +41,13 @@ class NodeDataScorer:
                 logger.debug(f"Creating telemetry client for node {hotkey}")
                 overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", None)
 
-                telemetry_client = TEETelemetryClient(
-                    f"{overwrite_localhost if node.ip == '1' and overwrite_localhost is not None else f"{node.ip}:{node.port}"}"
+                # Determine the server address
+                server_address = (
+                    overwrite_localhost
+                    if node.ip == "1" and overwrite_localhost is not None
+                    else f"{node.ip}:{node.port}"
                 )
+                telemetry_client = TEETelemetryClient(server_address)
 
                 logger.debug(f"Executing telemetry sequence for node {hotkey}")
                 telemetry_result = await telemetry_client.execute_telemetry_sequence()
