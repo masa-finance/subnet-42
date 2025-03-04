@@ -39,6 +39,7 @@ services:
       - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
       - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
       - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
+      - OE_SIMULATION=1
     volumes:
       - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ./.env:/app/.env
