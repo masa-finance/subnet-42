@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml .
-RUN . "$HOME/.cargo/env" && pip install --no-cache-dir .
+RUN . "$HOME/.cargo/env" && pip install --no-cache-dir -e .
 
 # Final stage
 FROM python:3.10-slim

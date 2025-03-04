@@ -11,8 +11,9 @@ services:
       retries: 5
 
   subnet42:
-    image: masaengineering/subnet-42:latest
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       - ROLE=${ROLE:-miner}
       - NETWORK=${NETWORK:-test}
