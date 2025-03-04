@@ -4,13 +4,22 @@ FROM python:3.10-slim
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     git \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN . "$HOME/.cargo/env"
 
 # Set working directory
 WORKDIR /app
 
-# Install fiber
-RUN pip install --no-cache-dir git+https://github.com/5u6r054/fiber.git@fix/remove-bittensor-commit-reveal-dependency
+# Copy pyproject.toml and install dependencies
+COPY pyproject.toml .
+RUN . "$HOME/.cargo/env" && pip install --no-cache-dir -r <(pip install pip-tools && pip-compile --no-emit-index-url pyproject.toml)
 
 # Set environment variables
 ENV PYTHONPATH=/app
