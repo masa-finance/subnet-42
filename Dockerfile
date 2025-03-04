@@ -24,7 +24,6 @@ RUN . "$HOME/.cargo/env" && pip install .
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV ROLE=miner
 
 # Default command (can be overridden by docker-compose)
 CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python -m neurons.validator; else python -m neurons.miner; fi"] 
