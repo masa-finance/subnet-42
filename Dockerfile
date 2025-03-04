@@ -21,13 +21,6 @@ WORKDIR /app
 COPY pyproject.toml .
 RUN . "$HOME/.cargo/env" && pip install --no-cache-dir .
 
-# Copy application code
-COPY neurons/ neurons/
-COPY miner/ miner/
-COPY validator/ validator/
-COPY interfaces/ interfaces/
-COPY scripts/ scripts/
-
 # Final stage
 FROM python:3.10-slim
 
@@ -51,6 +44,7 @@ RUN mkdir -p /app/keys /app/config && \
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV ROLE=miner
 
 # Default command (can be overridden by docker-compose)
-CMD ["python", "-m", "miner.miner"] 
+CMD ["sh", "-c", "python -m ${ROLE}.${ROLE}"] 

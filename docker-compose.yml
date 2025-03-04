@@ -3,68 +3,38 @@ services:
     image: nats:latest
     ports:
       - "4222:4222"
-      - "8222:8222"
-    command: "-js"
-    volumes:
-      - nats_data:/data
+    command: ["--jetstream"]
+    healthcheck:
+      test: ["CMD", "nats-server", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  subnet42-miner:
-    image: masaengineering/subnet-42:latest
+  subnet42:
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
+      - ROLE=${ROLE:-miner}
+      - NETWORK=${NETWORK:-test}
+      - WALLET_PATH=${WALLET_PATH:-/root/.bittensor}
+      - WALLET_NAME=${WALLET_NAME:-default}
+      - WALLET_HOTKEY=${WALLET_HOTKEY:-default}
       - NATS_URL=nats://nats:4222
-      - TEE_NATS_CHANNEL_NAME=miners
-      - DEBUG=true
-      - ENV=dev
-      - ROLE=miner
-      - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
-      - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
-      - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
+      - TEE_WORKER_URL=http://tee-worker:8000
     volumes:
-      - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
-      - ./.env:/app/.env
-      - ./scripts:/app/scripts
-      - ./miner:/app/miner
-      - ./validator:/app/validator
-      - ./interfaces:/app/interfaces
-      - ./neurons:/app/neurons
+      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+      - ${CONFIG_PATH:-./config}:/app/config
     depends_on:
-      - nats
-
-  subnet42-validator:
-    image: masaengineering/subnet-42:latest
-    environment:
-      - NATS_URL=nats://nats:4222
-      - TEE_NATS_CHANNEL_NAME=miners
-      - DEBUG=true
-      - ENV=dev
-      - ROLE=validator
-      - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
-      - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
-      - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
-    volumes:
-      - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
-      - ./.env:/app/.env
-      - ./scripts:/app/scripts
-      - ./miner:/app/miner
-      - ./validator:/app/validator
-      - ./interfaces:/app/interfaces
-      - ./neurons:/app/neurons
-    depends_on:
-      - nats
+      nats:
+        condition: service_healthy
+      tee-worker:
+        condition: service_started
 
   tee-worker:
     image: masaengineering/tee-worker:latest
     environment:
-      - NATS_URL=nats://nats:4222
-      - TEE_NATS_CHANNEL_NAME=miners
-      - ROLE=tee-worker
-      - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
-      - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
-      - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
       - OE_SIMULATION=1
-    volumes:
-      - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
-      - ./.env:/app/.env
     depends_on:
       - nats
 
