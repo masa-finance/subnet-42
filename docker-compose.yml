@@ -11,9 +11,14 @@ services:
       retries: 5
 
   subnet42:
+    image: masaengineering/subnet42:latest
     build:
       context: .
       dockerfile: Dockerfile
+      x-bake:
+        when:
+          variable: BUILD_LOCAL
+          value: "true"
     ports:
       - "${VALIDATOR_PORT:-8081}:8081"
       - "${MINER_PORT:-8082}:8082"
