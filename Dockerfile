@@ -26,4 +26,4 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # Default command (can be overridden by docker-compose)
-CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python -m neurons.validator; else python -m neurons.miner; fi"] 
+CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python scripts/run_validator.py; else python scripts/run_miner.py; fi"] 
