@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+RUN . "$HOME/.cargo/env" && pip install --no-cache-dir .
 
 # Copy application code
 COPY neurons/ neurons/
