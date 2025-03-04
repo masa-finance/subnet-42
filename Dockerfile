@@ -36,15 +36,10 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Create directories for keys and config
-RUN mkdir -p /app/keys /app/config && \
-    chmod 700 /app/keys && \
-    chmod 700 /app/config
-
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV ROLE=miner
 
 # Default command (can be overridden by docker-compose)
-CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python -m neurons.validator; else python -m miner.miner; fi"] 
+CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python -m neurons.validator; else python -m neurons.miner; fi"] 
