@@ -47,4 +47,4 @@ ENV PYTHONUNBUFFERED=1
 ENV ROLE=miner
 
 # Default command (can be overridden by docker-compose)
-CMD ["sh", "-c", "python -m ${ROLE}.${ROLE}"] 
+CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python -m neurons.validator; else python -m miner.miner; fi"] 
