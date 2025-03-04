@@ -17,7 +17,7 @@ services:
       - ENV=dev
       - ROLE=miner
     volumes:
-      - ./keys:/app/keys
+      - ~/.bittensor:/root/.bittensor
       - ./.env:/app/.env
       - ./scripts:/app/scripts
       - ./miner:/app/miner
@@ -34,7 +34,7 @@ services:
       - TEE_NATS_CHANNEL_NAME=miners
       - ROLE=tee-worker
     volumes:
-      - ./keys:/app/keys
+      - ~/.bittensor:/root/.bittensor
       - ./.env:/app/.env
     depends_on:
       - nats
