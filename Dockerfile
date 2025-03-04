@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=linux/amd64 python:3.10-slim AS builder
+FROM python:3.10-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -29,7 +29,7 @@ COPY interfaces/ interfaces/
 COPY scripts/ scripts/
 
 # Final stage
-FROM --platform=linux/amd64 python:3.10-slim
+FROM python:3.10-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
