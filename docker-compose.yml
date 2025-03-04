@@ -31,7 +31,7 @@ services:
       - nats
 
   tee-worker:
-    image: masaengineering/subnet-42:latest
+    image: masaengineering/tee-worker:latest
     environment:
       - NATS_URL=nats://nats:4222
       - TEE_NATS_CHANNEL_NAME=miners
@@ -39,7 +39,6 @@ services:
       - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
       - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
       - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
-    command: ["python", "-m", "tee_worker.worker"]
     volumes:
       - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ./.env:/app/.env
