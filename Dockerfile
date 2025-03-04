@@ -1,5 +1,5 @@
-# Build stage for compiling dependencies
-FROM --platform=linux/amd64 python:3.10-slim as builder
+# Build stage
+FROM --platform=linux/amd64 python:3.10-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -10,17 +10,16 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust (needed for substrate-interface and bip39 bindings)
+# Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
 RUN . "$HOME/.cargo/env"
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy pyproject.toml and install dependencies
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
 
 # Copy application code
 COPY neurons/ neurons/
@@ -32,7 +31,7 @@ COPY scripts/ scripts/
 # Final stage
 FROM --platform=linux/amd64 python:3.10-slim
 
-# Install runtime dependencies only
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -40,18 +39,18 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy installed packages from builder
+# Copy Python packages and binaries from builder
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Create directories for mounted volumes with appropriate permissions
+# Create directories for keys and config
 RUN mkdir -p /app/keys /app/config && \
     chmod 700 /app/keys && \
     chmod 700 /app/config
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
-# Default command (can be overridden in docker-compose)
-CMD ["python", "scripts/run_miner.py"] 
+# Default command (can be overridden by docker-compose)
+CMD ["python", "-m", "miner.miner"] 
