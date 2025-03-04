@@ -18,16 +18,16 @@ RUN . "$HOME/.cargo/env"
 # Set working directory
 WORKDIR /app
 
-# Copy only necessary files for building
-COPY pyproject.toml .
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
 COPY neurons/ neurons/
 COPY miner/ miner/
 COPY validator/ validator/
 COPY interfaces/ interfaces/
 COPY scripts/ scripts/
-
-# Install dependencies
-RUN pip install --no-cache-dir .
 
 # Final stage
 FROM --platform=linux/amd64 python:3.10-slim
