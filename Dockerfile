@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml .
-RUN . "$HOME/.cargo/env" && pip install .
+RUN . "$HOME/.cargo/env" && pip install bittensor && pip install .
 
 # Set environment variables
 ENV PYTHONPATH=/app
