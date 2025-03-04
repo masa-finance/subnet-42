@@ -16,8 +16,11 @@ services:
       - DEBUG=true
       - ENV=dev
       - ROLE=miner
+      - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
+      - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
+      - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
     volumes:
-      - ~/.bittensor:/root/.bittensor
+      - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ./.env:/app/.env
       - ./scripts:/app/scripts
       - ./miner:/app/miner
@@ -33,8 +36,12 @@ services:
       - NATS_URL=nats://nats:4222
       - TEE_NATS_CHANNEL_NAME=miners
       - ROLE=tee-worker
+      - BT_WALLET_PATH=${BT_WALLET_PATH:-/root/.bittensor}
+      - BT_WALLET_NAME=${BT_WALLET_NAME:-default}
+      - BT_HOTKEY_NAME=${BT_HOTKEY_NAME:-default}
+    command: ["python", "-m", "tee_worker.worker"]
     volumes:
-      - ~/.bittensor:/root/.bittensor
+      - ${BT_WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ./.env:/app/.env
     depends_on:
       - nats
