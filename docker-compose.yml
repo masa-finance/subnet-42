@@ -4,6 +4,7 @@ services:
       - nats
       - validator
     image: nats:latest
+    pull_policy: always
     ports:
       - "4222:4222"
     command: ["--jetstream"]
@@ -15,7 +16,8 @@ services:
 
   subnet42:
     profiles: ["miner", "validator"]
-    image: masaengineering/subnet42:latest
+    image: masaengineering/subnet-42:latest
+    pull_policy: always
     build:
       context: .
       dockerfile: Dockerfile
@@ -47,6 +49,7 @@ services:
   tee-worker:
     profiles: ["miner"]
     image: masaengineering/tee-worker:latest
+    pull_policy: always
     environment:
       - ROLE=validator
     env_file: .env
