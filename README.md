@@ -108,3 +108,169 @@ BUILD_LOCAL=true docker compose --profile [miner|validator] up
 ```
 
 For more detailed information about the TEE worker requirements and setup, please refer to the [tee-worker repository](https://github.com/masa-finance/tee-worker).
+
+## Kubernetes Deployment
+
+### Prerequisites
+- A Kubernetes cluster
+- `kubectl` configured to access your cluster
+- Your Bittensor hotkey (for validator or miner)
+
+### Validator Deployment
+
+1. Create a secret with your validator hotkey:
+```bash
+# Create the secret from your hotkey file
+kubectl create secret generic bittensor-hotkey \
+  --from-file=hotkey=/path/to/your/hotkey
+```
+
+2. Create the validator deployment:
+```yaml
+# validator-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subnet42-validator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: subnet42-validator
+  template:
+    metadata:
+      labels:
+        app: subnet42-validator
+    spec:
+      containers:
+      - name: validator
+        image: masaengineering/subnet42:latest
+        command: ["/bin/bash"]
+        args: ["/app/k8s_entrypoint.sh"]
+        env:
+        - name: BITTENSOR_HOTKEY
+          valueFrom:
+            secretKeyRef:
+              name: bittensor-hotkey
+              key: hotkey
+        - name: NETUID
+          value: "165"  # Change to 59 for mainnet
+        - name: SUBTENSOR_NETWORK
+          value: "finney"  # Change to "test" for testnet
+        ports:
+        - containerPort: 8081
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+```
+
+3. Apply the deployment:
+```bash
+kubectl apply -f validator-deployment.yaml
+```
+
+### Miner Deployment
+
+1. Create a secret with your miner hotkey:
+```bash
+# Create the secret from your hotkey file
+kubectl create secret generic bittensor-miner-hotkey \
+  --from-file=hotkey=/path/to/your/miner/hotkey
+```
+
+2. Create the miner deployment:
+```yaml
+# miner-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subnet42-miner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: subnet42-miner
+  template:
+    metadata:
+      labels:
+        app: subnet42-miner
+    spec:
+      containers:
+      - name: miner
+        image: masaengineering/subnet42:latest
+        command: ["/bin/bash"]
+        args: ["/app/k8s_entrypoint.sh"]
+        env:
+        - name: BITTENSOR_HOTKEY
+          valueFrom:
+            secretKeyRef:
+              name: bittensor-miner-hotkey
+              key: hotkey
+        - name: NETUID
+          value: "165"  # Change to 59 for mainnet
+        - name: SUBTENSOR_NETWORK
+          value: "finney"  # Change to "test" for testnet
+        - name: ROLE
+          value: "miner"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+      # Optional: Add node selector for GPU nodes if needed
+      # nodeSelector:
+      #   cloud.google.com/gke-accelerator: nvidia-tesla-t4
+```
+
+3. Apply the deployment:
+```bash
+kubectl apply -f miner-deployment.yaml
+```
+
+### Monitoring in Kubernetes
+
+View pod logs:
+```bash
+# For validator logs:
+kubectl logs -f deployment/subnet42-validator
+
+# For miner logs:
+kubectl logs -f deployment/subnet42-miner
+```
+
+Check pod status:
+```bash
+kubectl get pods -l app=subnet42-validator
+kubectl get pods -l app=subnet42-miner
+```
+
+### Kubernetes Troubleshooting
+
+1. Check pod status:
+```bash
+kubectl describe pod -l app=subnet42-validator
+# or
+kubectl describe pod -l app=subnet42-miner
+```
+
+2. Verify secrets are properly mounted:
+```bash
+kubectl describe secret bittensor-hotkey
+kubectl describe secret bittensor-miner-hotkey
+```
+
+3. Check container logs for detailed error messages:
+```bash
+kubectl logs -f <pod-name>
+```
+
+4. Verify environment variables:
+```bash
+kubectl exec -it <pod-name> -- env | grep BITTENSOR
+```
