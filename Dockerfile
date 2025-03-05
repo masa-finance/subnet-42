@@ -27,6 +27,10 @@ COPY miner miner/
 COPY validator validator/
 COPY interfaces interfaces/
 COPY scripts scripts/
+COPY entrypoint.sh .
+
+# Make entrypoint script executable
+RUN chmod +x entrypoint.sh
 
 # Set environment variables
 ENV PYTHONPATH=/app

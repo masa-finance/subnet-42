@@ -5,6 +5,47 @@ A Bittensor subnet for MASA's Subnet 42.
 ## Prerequisites
 
 - Docker and Docker Compose installed
+- Your Bittensor coldkey mnemonic (hotkey will be auto-generated)
+
+## Quick Start
+
+1. Clone and configure:
+```bash
+git clone https://github.com/masa-finance/subnet-42.git
+cd subnet-42
+cp .env.example .env
+```
+
+2. Edit `.env` with just your coldkey:
+```env
+# Required: Your coldkey mnemonic phrase
+COLDKEY_MNEMONIC="your coldkey mnemonic here"
+
+# Optional: These will use defaults if not set
+NETUID=165                  # defaults to 165 (testnet)
+SUBTENSOR_NETWORK=test      # defaults to test
+```
+
+3. Start your miner:
+```bash
+docker compose up
+```
+
+That's it! The miner will automatically:
+- Generate a new hotkey
+- Register it to the subnet
+- Start mining
+
+To view logs:
+```bash
+docker compose logs -f
+```
+
+### Advanced Configuration
+
+For more complex setups, you can:
+
+- Docker and Docker Compose installed
 - Your Bittensor wallet mnemonics (both coldkey and hotkey)
 - Your hotkey must be registered on Subnet 42
 
@@ -56,6 +97,65 @@ docker compose --profile validator up subnet42
 BUILD_LOCAL=true docker compose --profile miner up
 # or
 BUILD_LOCAL=true docker compose --profile validator up
+```
+
+### Running Multiple Miners with Docker Compose
+
+For testnet development, you can run multiple miners using Docker Compose. This setup will automatically generate and manage hotkeys for each miner instance.
+
+1. Create a `.env` file with your coldkey (no hotkey needed):
+```env
+# Required: Wallet Configuration
+# Your coldkey mnemonic phrase
+COLDKEY_MNEMONIC="your coldkey mnemonic here"
+
+# Network Configuration
+# Network UID (165 for testnet, 59 for mainnet)
+NETUID=165
+
+# Network name (test or finney)
+SUBTENSOR_NETWORK=test
+```
+
+2. Use the multi-miner compose configuration:
+```bash
+# Start 5 miners (adjust number as needed)
+MINER_COUNT=5 docker compose --profile multi-miner up -d
+
+# View logs for all miners
+docker compose logs -f
+
+# Scale up or down
+docker compose up -d --scale subnet42-miner=10
+```
+
+The multi-miner setup:
+- Uses a shared coldkey across all instances
+- Automatically generates unique hotkeys for each miner
+- Stores hotkeys in a local volume for persistence
+- Names instances consistently (subnet42-miner-1, subnet42-miner-2, etc.)
+- Preserves hotkey assignments across restarts
+
+Example docker-compose.yml section for multiple miners:
+```yaml
+services:
+  subnet42-miner:
+    image: masaengineering/subnet42:latest
+    command: ["/bin/bash", "/app/entrypoint-multi.sh"]
+    environment:
+      - COLDKEY_MNEMONIC=${COLDKEY_MNEMONIC}
+      - NETUID=${NETUID:-165}
+      - SUBTENSOR_NETWORK=${SUBTENSOR_NETWORK:-test}
+      - ROLE=miner
+      - AUTO_GENERATE_HOTKEY=true
+    volumes:
+      - hotkeys:/root/.bittensor/wallets
+    deploy:
+      mode: replicated
+      replicas: ${MINER_COUNT:-1}
+
+volumes:
+  hotkeys:
 ```
 
 ### Direct Docker Usage
@@ -319,3 +419,85 @@ kubectl logs -f <pod-name>
 ```bash
 kubectl exec -it <pod-name> -- env | grep BITTENSOR
 ```
+
+## Running Multiple Miners
+
+For testnet development or large-scale deployments, you can run multiple miners that automatically generate and register their hotkeys. This feature uses Kubernetes StatefulSets to maintain consistent instance identities and automatically manages hotkey generation and storage.
+
+### Prerequisites
+- All standard Kubernetes prerequisites
+- A coldkey with sufficient TAO for registrations
+- Kubernetes cluster with RBAC enabled
+
+### Setup Multiple Miners
+
+1. Create the coldkey secret (this will be shared across all miners):
+```bash
+kubectl create secret generic bittensor-miner-mnemonics \
+  --from-literal=coldkey-mnemonic="your coldkey mnemonic here"
+```
+
+2. Apply the StatefulSet configuration:
+```bash
+# miner-statefulset.yaml provided in the repository
+kubectl apply -f miner-statefulset.yaml
+```
+
+3. Scale to desired number of miners:
+```bash
+# Example: Scale to 128 miners
+kubectl scale statefulset subnet42-miner --replicas=128
+```
+
+### How It Works
+
+The multi-miner setup:
+- Uses a shared coldkey across all instances
+- Automatically generates unique hotkeys for each miner instance
+- Stores hotkeys in Kubernetes secrets for persistence
+- Maintains consistent instance numbering (subnet42-miner-0, subnet42-miner-1, etc.)
+- Preserves hotkey assignments across pod restarts
+
+To use this feature:
+1. Replace the standard `entrypoint.sh` with `entrypoint-multi.sh` in your deployment
+2. Ensure your ServiceAccount has permissions to manage secrets
+3. Set `AUTO_GENERATE_HOTKEY=true` in your deployment
+
+Example StatefulSet configuration:
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: subnet42-miner
+spec:
+  serviceName: subnet42-miner
+  replicas: 1  # Adjust as needed
+  template:
+    spec:
+      containers:
+      - name: miner
+        image: masaengineering/subnet42:latest
+        command: ["/bin/bash"]
+        args: ["/app/entrypoint-multi.sh"]
+        env:
+        - name: AUTO_GENERATE_HOTKEY
+          value: "true"
+        # ... other standard environment variables ...
+```
+
+### Security Considerations
+
+When running multiple miners:
+1. Protect the coldkey mnemonic carefully - it's shared across all instances
+2. Monitor hotkey secret creation and management
+3. Use network policies to restrict pod communication
+4. Consider using node anti-affinity rules to spread miners across nodes
+5. Implement proper monitoring for all instances
+
+### Resource Management
+
+For large deployments:
+1. Calculate total resource requirements before scaling
+2. Consider using node selectors or taints/tolerations for specialized hardware
+3. Monitor network bandwidth and adjust accordingly
+4. Use horizontal pod autoscaling based on custom metrics if needed
