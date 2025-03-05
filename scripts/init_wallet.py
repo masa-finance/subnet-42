@@ -20,24 +20,26 @@ def init_wallet():
             overwrite=True
         )
 
-    # Handle hotkey generation
-    auto_generate = os.getenv('AUTO_GENERATE_HOTKEY', '').lower() == 'true'
-    hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
+    # Only generate/regenerate hotkey if it doesn't exist
+    hotkey_path = pathlib.Path('/root/.bittensor/wallets/default/hotkeys/default')
+    if not hotkey_path.exists():
+        auto_generate = os.getenv('AUTO_GENERATE_HOTKEY', '').lower() == 'true'
+        hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
 
-    if auto_generate:
-        # Generate new hotkey - ignore return value
-        wallet.create_new_hotkey(use_password=False)
-    elif hotkey_mnemonic:
-        # Use provided mnemonic - ignore return value
-        wallet.regenerate_hotkey(
-            mnemonic=hotkey_mnemonic,
-            use_password=False,
-            overwrite=True
-        )
-    else:
-        msg = ('Either HOTKEY_MNEMONIC must be provided or '
-               'AUTO_GENERATE_HOTKEY must be set to true')
-        raise Exception(msg)
+        if auto_generate:
+            # Generate new hotkey - ignore return value
+            wallet.create_new_hotkey(use_password=False)
+        elif hotkey_mnemonic:
+            # Use provided mnemonic - ignore return value
+            wallet.regenerate_hotkey(
+                mnemonic=hotkey_mnemonic,
+                use_password=False,
+                overwrite=True
+            )
+        else:
+            msg = ('Either HOTKEY_MNEMONIC must be provided or '
+                   'AUTO_GENERATE_HOTKEY must be set to true')
+            raise Exception(msg)
 
 if __name__ == '__main__':
     init_wallet() 
