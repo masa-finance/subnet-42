@@ -10,10 +10,6 @@ fi
 # Initialize wallet using our Python script
 python scripts/init_wallet.py
 
-# Set secure permissions
-chmod 600 /root/.bittensor/wallets/default/coldkey/default
-chmod 600 /root/.bittensor/wallets/default/hotkeys/default
-
 # Start the validator/miner
 if [ "$ROLE" = "validator" ]; then
     exec python scripts/run_validator.py
