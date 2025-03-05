@@ -104,7 +104,7 @@ class NodeManager:
             for node in available_nodes:
                 server_address = vali_client.construct_server_address(
                     node=node,
-                    replace_with_docker_localhost=False,
+                    replace_with_docker_localhost=True,
                     replace_with_localhost=True,
                 )
                 success = await self.connect_with_miner(
@@ -116,7 +116,9 @@ class NodeManager:
                         f"Connected to miner: {node.hotkey}, IP: {node.ip}, Port: {node.port}"
                     )
                 else:
-                    logger.warning(f"Failed to connect to miner {node.hotkey}")
+                    logger.warning(
+                        f"Failed to connect to miner {node.hotkey} with address {server_address}"
+                    )
 
         except Exception as e:
             logger.error("Error in registration check: %s", str(e))

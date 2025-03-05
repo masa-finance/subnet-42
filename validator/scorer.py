@@ -44,7 +44,8 @@ class NodeDataScorer:
                 # Determine the server address
                 server_address = (
                     overwrite_localhost
-                    if node.ip == "1" and overwrite_localhost is not None
+                    if (node.ip == "1" or node.ip == "0.0.0.1")
+                    and overwrite_localhost is not None
                     else f"{node.ip}:{node.port}"
                 )
                 telemetry_client = TEETelemetryClient(server_address)

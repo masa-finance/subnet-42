@@ -1,16 +1,5 @@
 services:
-  nats:
-    image: nats:latest
-    ports:
-      - "4222:4222"
-    command: ["--jetstream"]
-    healthcheck:
-      test: ["CMD", "nats-server", "--ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  subnet42:
+  subnet42-miner:
     image: masaengineering/subnet42:latest
     build:
       context: .
@@ -20,22 +9,10 @@ services:
           variable: BUILD_LOCAL
           value: "true"
     ports:
-      - "${VALIDATOR_PORT:-8081}:8081"
-      - "${MINER_PORT:-8082}:8082"
+      - "${MINER_PORT:-8082}:8081"
     environment:
-      - ROLE=${ROLE:-miner}
-      - NETWORK=${NETWORK:-test}
-      - WALLET_PATH=${WALLET_PATH:-/root/.bittensor}
-      - WALLET_NAME=${WALLET_NAME:-default}
-      - HOTKEY_NAME=${HOTKEY_NAME:-default}
-      - VALIDATOR_WALLET_NAME=${VALIDATOR_WALLET_NAME:-validator}
-      - VALIDATOR_HOTKEY_NAME=${VALIDATOR_HOTKEY_NAME:-default}
-      - NATS_URL=nats://nats:4222
-      - TEE_WORKER_URL=http://tee-worker:8000
-      - PYTHONUNBUFFERED=1
-      - PYTHONPATH=/app
-      - MINER_PORT=${MINER_PORT:-8082}
-      - VALIDATOR_PORT=${VALIDATOR_PORT:-8081}
+      - ROLE=miner
+    env_file: .env
     logging:
       driver: json-file
       options:
@@ -49,18 +26,33 @@ services:
       - ./validator:/app/validator
       - ./interfaces:/app/interfaces
       - ./scripts:/app/scripts
-    depends_on:
-      nats:
-        condition: service_healthy
-      tee-worker:
-        condition: service_started
-
-  tee-worker:
-    image: masaengineering/tee-worker:latest
+  subnet42-validator:
+    image: masaengineering/subnet42:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      x-bake:
+        when:
+          variable: BUILD_LOCAL
+          value: "true"
+    ports:
+      - "${VALIDATOR_PORT:-8081}:8082"
     environment:
-      - OE_SIMULATION=1
-    depends_on:
-      - nats
+      - ROLE=validator
+    env_file: .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+      - ${CONFIG_PATH:-./config}:/app/config
+      - ./neurons:/app/neurons
+      - ./miner:/app/miner
+      - ./validator:/app/validator
+      - ./interfaces:/app/interfaces
+      - ./scripts:/app/scripts
 
 volumes:
   nats_data:
