@@ -21,22 +21,24 @@ services:
     volumes:
       - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ${CONFIG_PATH:-./config}:/app/config
-      - ./neurons:/app/neurons
-      - ./miner:/app/miner
-      - ./validator:/app/validator
-      - ./interfaces:/app/interfaces
-      - ./scripts:/app/scripts
-  subnet42-validator:
-    image: masaengineering/subnet42:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      x-bake:
+      x-mounts:
         when:
-          variable: BUILD_LOCAL
+          variable: DEV_MODE
           value: "true"
-    ports:
-      - "${VALIDATOR_PORT:-8081}:8082"
+        volumes:
+          - ./neurons:/app/neurons
+          - ./miner:/app/miner
+          - ./validator:/app/validator
+          - ./interfaces:/app/interfaces
+          - ./scripts:/app/scripts
+    depends_on:
+      nats:
+        condition: service_healthy
+      tee-worker:
+        condition: service_started
+
+  tee-worker:
+    image: masaengineering/tee-worker:latest
     environment:
       - ROLE=validator
     env_file: .env

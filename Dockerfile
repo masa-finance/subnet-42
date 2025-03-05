@@ -21,6 +21,13 @@ WORKDIR /app
 COPY pyproject.toml .
 RUN . "$HOME/.cargo/env" && pip install --prefer-binary .
 
+# Copy application code
+COPY neurons neurons/
+COPY miner miner/
+COPY validator validator/
+COPY interfaces interfaces/
+COPY scripts scripts/
+
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
