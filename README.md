@@ -5,7 +5,8 @@ A Bittensor subnet for MASA's Subnet 42.
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- Your Bittensor coldkey mnemonic (hotkey will be auto-generated)
+- Your Bittensor coldkey mnemonic
+- (Optional) Your hotkey mnemonic - if not provided, a new hotkey will be auto-generated
 
 ## Quick Start
 
@@ -16,30 +17,55 @@ cd subnet-42
 cp .env.example .env
 ```
 
-2. Edit `.env` with just your coldkey:
+2. Edit `.env` with your configuration:
 ```env
 # Required: Your coldkey mnemonic phrase
 COLDKEY_MNEMONIC="your coldkey mnemonic here"
 
+# Optional: Choose ONE of these two options:
+# Option 1: Auto-generate a new hotkey (recommended for new users)
+AUTO_GENERATE_HOTKEY=true
+
+# Option 2: Use an existing hotkey
+HOTKEY_MNEMONIC="your existing hotkey mnemonic here"
+
 # Optional: These will use defaults if not set
 NETUID=165                  # defaults to 165 (testnet)
 SUBTENSOR_NETWORK=test      # defaults to test
+ROLE=miner                  # defaults to miner
 ```
 
-3. Start your miner:
+3. Start your node:
 ```bash
 docker compose up
 ```
 
-That's it! The miner will automatically:
-- Generate a new hotkey
-- Register it to the subnet
+That's it! The node will:
+- Use your coldkey
+- Either generate a new hotkey or use your existing one
+- Register to the subnet (if using a new hotkey)
 - Start mining
 
 To view logs:
 ```bash
 docker compose logs -f
 ```
+
+### Hotkey Management
+
+The container supports two modes for hotkey management:
+
+1. **Auto-Generate Mode** (Recommended for new users)
+   - Set `AUTO_GENERATE_HOTKEY=true` in your `.env`
+   - Don't set `HOTKEY_MNEMONIC`
+   - A new hotkey will be generated automatically
+   - The hotkey will be registered to the subnet
+
+2. **Manual Mode** (For existing hotkeys)
+   - Set `HOTKEY_MNEMONIC` in your `.env`
+   - Don't set `AUTO_GENERATE_HOTKEY`
+   - Your existing hotkey will be used
+   - Ensure your hotkey is already registered on the subnet
 
 ### Advanced Configuration
 
