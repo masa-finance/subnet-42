@@ -19,14 +19,14 @@ cp .env.example .env
 
 2. Edit `.env` with your configuration:
 ```env
-# Required: Your coldkey mnemonic phrase
+# Required: Your coldkey mnemonic phrase (only used if coldkey doesn't exist)
 COLDKEY_MNEMONIC="your coldkey mnemonic here"
 
-# Optional: Choose ONE of these two options:
+# Optional: Choose ONE of these two options for hotkey management:
 # Option 1: Auto-generate a new hotkey (recommended for new users)
 AUTO_GENERATE_HOTKEY=true
 
-# Option 2: Use an existing hotkey
+# Option 2: Use an existing hotkey mnemonic (only used if hotkey doesn't exist)
 HOTKEY_MNEMONIC="your existing hotkey mnemonic here"
 
 # Optional: These will use defaults if not set
@@ -37,12 +37,16 @@ ROLE=miner                  # defaults to miner
 
 3. Start your node:
 ```bash
-docker compose up
+# For development/local build:
+BUILD_LOCAL=true docker compose --profile miner up --build
+
+# For production (pulls from Docker Hub):
+docker compose --profile miner up
 ```
 
 That's it! The node will:
-- Use your coldkey
-- Either generate a new hotkey or use your existing one
+- Initialize your coldkey (if it doesn't exist)
+- Either generate a new hotkey or use your existing one (if it doesn't exist)
 - Register to the subnet (if using a new hotkey)
 - Start mining
 
@@ -51,96 +55,73 @@ To view logs:
 docker compose logs -f
 ```
 
-### Hotkey Management
+### Wallet Management
 
-The container supports two modes for hotkey management:
+The container manages wallets in the following way:
 
-1. **Auto-Generate Mode** (Recommended for new users)
-   - Set `AUTO_GENERATE_HOTKEY=true` in your `.env`
-   - Don't set `HOTKEY_MNEMONIC`
-   - A new hotkey will be generated automatically
-   - The hotkey will be registered to the subnet
+1. **Coldkey Management**
+   - If a coldkey doesn't exist, it will be created using `COLDKEY_MNEMONIC`
+   - If a coldkey already exists, it will be preserved and `COLDKEY_MNEMONIC` is ignored
+   - `COLDKEY_MNEMONIC` is required in case a new coldkey needs to be created
 
-2. **Manual Mode** (For existing hotkeys)
-   - Set `HOTKEY_MNEMONIC` in your `.env`
-   - Don't set `AUTO_GENERATE_HOTKEY`
-   - Your existing hotkey will be used
-   - Ensure your hotkey is already registered on the subnet
+2. **Hotkey Management**
+   The container supports two modes:
+
+   a. **Auto-Generate Mode** (Recommended for new users)
+      - Set `AUTO_GENERATE_HOTKEY=true` in your `.env`
+      - Don't set `HOTKEY_MNEMONIC`
+      - A new hotkey will be generated if one doesn't exist
+      - The hotkey will be registered to the subnet
+
+   b. **Manual Mode** (For existing hotkeys)
+      - Set `HOTKEY_MNEMONIC` in your `.env`
+      - Don't set `AUTO_GENERATE_HOTKEY`
+      - Your existing hotkey will be used if one doesn't exist
+      - Ensure your hotkey is already registered on the subnet
+
+   Note: In both modes, if a hotkey already exists, it will be preserved and no new hotkey will be generated.
 
 ### Advanced Configuration
 
 For more complex setups, you can:
 
-- Docker and Docker Compose installed
-- Your Bittensor wallet mnemonics (both coldkey and hotkey)
-- Your hotkey must be registered on Subnet 42
+1. **Build Locally**
+   ```bash
+   # Build and run with local changes
+   BUILD_LOCAL=true docker compose --profile miner up --build
+   ```
 
-## Quick Start
+2. **Run Different Profiles**
+   ```bash
+   # Run as a miner (includes TEE worker):
+   docker compose --profile miner up
 
-1. Clone and configure:
-```bash
-git clone https://github.com/masa-finance/subnet-42.git
-cd subnet-42
-cp .env.example .env
-```
+   # Run just the miner container without TEE worker:
+   docker compose --profile miner up subnet42
 
-2. Edit `.env` with your configuration:
-```env
-# Required: Wallet Configuration
-# Your coldkey mnemonic phrase
-COLDKEY_MNEMONIC=""
+   # Run as a validator (includes NATS):
+   docker compose --profile validator up
 
-# Your hotkey mnemonic phrase
-HOTKEY_MNEMONIC=""
-
-# Network Configuration
-# Network UID (165 for testnet, 59 for mainnet)
-NETUID=165
-
-# Network name (test or finney)
-SUBTENSOR_NETWORK=test
-
-# Role Configuration
-# Node role (validator or miner)
-ROLE=validator
-```
-
-3. Run your node:
-```bash
-# To run as a miner (includes TEE worker):
-docker compose --profile miner up
-
-# To run just the miner container without TEE worker:
-docker compose --profile miner up subnet42
-
-# To run as a validator (includes NATS):
-docker compose --profile validator up
-
-# To run just the validator container without NATS:
-docker compose --profile validator up subnet42
-
-# To build locally instead of pulling from Docker Hub:
-BUILD_LOCAL=true docker compose --profile miner up
-# or
-BUILD_LOCAL=true docker compose --profile validator up
-```
+   # Run just the validator container without NATS:
+   docker compose --profile validator up subnet42
+   ```
 
 ### Running Multiple Miners with Docker Compose
 
-For testnet development, you can run multiple miners using Docker Compose. This setup will automatically generate and manage hotkeys for each miner instance.
+For testnet development, you can run multiple miners using Docker Compose. Each miner instance will preserve its wallet state across restarts.
 
-1. Create a `.env` file with your coldkey (no hotkey needed):
+1. Create a `.env` file with your coldkey (only used for new wallets):
 ```env
 # Required: Wallet Configuration
-# Your coldkey mnemonic phrase
+# Your coldkey mnemonic phrase (only used if coldkey doesn't exist)
 COLDKEY_MNEMONIC="your coldkey mnemonic here"
 
 # Network Configuration
-# Network UID (165 for testnet, 59 for mainnet)
-NETUID=165
+NETUID=165                  # Network UID (165 for testnet, 59 for mainnet)
+SUBTENSOR_NETWORK=test      # Network name (test or finney)
 
-# Network name (test or finney)
-SUBTENSOR_NETWORK=test
+# Always set to true for multi-miner setup
+AUTO_GENERATE_HOTKEY=true
 ```
 
 2. Use the multi-miner compose configuration:
@@ -156,11 +137,11 @@ docker compose up -d --scale subnet42-miner=10
 ```
 
 The multi-miner setup:
-- Uses a shared coldkey across all instances
-- Automatically generates unique hotkeys for each miner
-- Stores hotkeys in a local volume for persistence
+- Uses a shared coldkey across all instances (if it needs to be created)
+- Automatically generates unique hotkeys for each miner (if they don't exist)
+- Preserves all wallet state in a local volume
 - Names instances consistently (subnet42-miner-1, subnet42-miner-2, etc.)
-- Preserves hotkey assignments across restarts
+- Maintains wallet state across restarts
 
 Example docker-compose.yml section for multiple miners:
 ```yaml
@@ -196,8 +177,8 @@ docker run -it --rm \
   -v ./interfaces:/app/interfaces \
   -v ./scripts:/app/scripts \
   -e ROLE=validator \
-  -e COLDKEY_MNEMONIC="your coldkey mnemonic phrase here" \
-  -e HOTKEY_MNEMONIC="your hotkey mnemonic phrase here" \
+  -e COLDKEY_MNEMONIC="your coldkey mnemonic here" \
+  -e AUTO_GENERATE_HOTKEY=true \
   -e NETUID=165 \
   -p 8081:8081 \
   masaengineering/subnet42:latest
@@ -207,21 +188,28 @@ Minimal production deployment:
 ```bash
 docker run -d \
   -e ROLE=validator \
-  -e COLDKEY_MNEMONIC="your coldkey mnemonic phrase here" \
-  -e HOTKEY_MNEMONIC="your hotkey mnemonic phrase here" \
+  -e COLDKEY_MNEMONIC="your coldkey mnemonic here" \
+  -e AUTO_GENERATE_HOTKEY=true \
   -e NETUID=165 \
   -e SUBTENSOR_NETWORK=finney \
   -p 8081:8081 \
   masaengineering/subnet42:latest
 ```
 
-### Security Note
+### Security Notes
 
-The mnemonic phrases are sensitive information. In production:
-1. Use environment files or secure secret management systems
-2. Never commit mnemonics to version control
-3. Consider using hardware security modules (HSMs) for key storage
-4. Rotate keys periodically following security best practices
+1. **Wallet Security**
+   - Mnemonics are only used when creating new wallets
+   - Once wallets are created, mnemonics in environment variables are ignored
+   - Use environment files or secure secret management systems
+   - Never commit mnemonics to version control
+   - Consider using hardware security modules (HSMs) for key storage
+   - Rotate keys periodically following security best practices
+
+2. **File Permissions**
+   - Wallet files are managed by the bittensor library
+   - The container respects existing wallet files and their permissions
+   - New wallets are created with secure permissions
 
 ## Monitoring
 
@@ -239,14 +227,21 @@ docker compose logs nats -f
 
 ## Troubleshooting
 
-1. Ensure your Bittensor wallet is properly registered on Subnet 42
-2. Check your .env configuration:
-   - Verify wallet and hotkey names are correct
-   - Ensure NETUID matches the network you're connecting to
-3. For miners:
-   - Check TEE worker logs for any initialization errors
-4. For validators:
-   - Verify NATS is running and accessible
+1. **Wallet Issues**
+   - Check if your coldkey exists at `/root/.bittensor/wallets/default/coldkey/default`
+   - Check if your hotkey exists at `/root/.bittensor/wallets/default/hotkeys/default`
+   - Ensure `COLDKEY_MNEMONIC` is set if you need to create a new coldkey
+   - For new hotkeys, either set `AUTO_GENERATE_HOTKEY=true` or provide `HOTKEY_MNEMONIC`
+
+2. **Network Issues**
+   - Verify NETUID matches the network you're connecting to (165 for testnet, 59 for mainnet)
+   - Ensure SUBTENSOR_NETWORK is correct (test or finney)
+
+3. **Container Issues**
+   - For miners: Check TEE worker logs for initialization errors
+   - For validators: Verify NATS is running and accessible
+   - Check container logs for any startup errors
+   - Verify environment variables are set correctly
 
 ## Development
 
