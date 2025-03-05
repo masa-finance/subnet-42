@@ -13,9 +13,8 @@ if [ -z "$INSTANCE_ID" ]; then
     exit 1
 fi
 
-# Create necessary directories
-mkdir -p /root/.bittensor/wallets/default/coldkey
-mkdir -p /root/.bittensor/wallets/default/hotkeys
+# Initialize wallet using our Python script
+python scripts/init_wallet.py
 
 # Function to create Kubernetes secret
 create_k8s_secret() {
