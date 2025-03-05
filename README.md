@@ -5,7 +5,8 @@ A Bittensor subnet for MASA's Subnet 42.
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- A registered Bittensor wallet with a hotkey registered on Subnet 42
+- Your Bittensor wallet mnemonics (both coldkey and hotkey)
+- Your hotkey must be registered on Subnet 42
 
 ## Quick Start
 
@@ -13,19 +14,28 @@ A Bittensor subnet for MASA's Subnet 42.
 ```bash
 git clone https://github.com/masa-finance/subnet-42.git
 cd subnet-42
-cp .env.sample .env
+cp .env.example .env
 ```
 
 2. Edit `.env` with your configuration:
 ```env
 # Required: Wallet Configuration
-WALLET_NAME=your-wallet-name
-HOTKEY_NAME=your-hotkey-name
-WALLET_PATH=/path/to/your/wallet  # Defaults to ~/.bittensor
+# Your coldkey mnemonic phrase
+COLDKEY_MNEMONIC=""
 
-# Optional: Network Configuration
-NETUID=165                        # 165 for testnet, 59 for mainnet
-SUBTENSOR_NETWORK=test            # 'test' or 'finney'
+# Your hotkey mnemonic phrase
+HOTKEY_MNEMONIC=""
+
+# Network Configuration
+# Network UID (165 for testnet, 59 for mainnet)
+NETUID=165
+
+# Network name (test or finney)
+SUBTENSOR_NETWORK=test
+
+# Role Configuration
+# Node role (validator or miner)
+ROLE=validator
 ```
 
 3. Run your node:
@@ -46,10 +56,13 @@ docker compose --profile validator up subnet42
 BUILD_LOCAL=true docker compose --profile miner up
 # or
 BUILD_LOCAL=true docker compose --profile validator up
+```
 
-# To run the validator directly with Docker (development with local files):
+### Direct Docker Usage
+
+For development with local files:
+```bash
 docker run -it --rm \
-  -v ~/.bittensor:/root/.bittensor \
   -v ./config:/app/config \
   -v ./neurons:/app/neurons \
   -v ./miner:/app/miner \
@@ -57,23 +70,32 @@ docker run -it --rm \
   -v ./interfaces:/app/interfaces \
   -v ./scripts:/app/scripts \
   -e ROLE=validator \
-  -e WALLET_NAME=your-wallet-name \
-  -e HOTKEY_NAME=your-hotkey-name \
+  -e COLDKEY_MNEMONIC="your coldkey mnemonic phrase here" \
+  -e HOTKEY_MNEMONIC="your hotkey mnemonic phrase here" \
   -e NETUID=165 \
   -p 8081:8081 \
   masaengineering/subnet42:latest
+```
 
-# Minimal production deployment (e.g., for Kubernetes):
+Minimal production deployment:
+```bash
 docker run -d \
-  -v /path/to/wallet:/root/.bittensor \
   -e ROLE=validator \
-  -e WALLET_NAME=your-wallet-name \
-  -e HOTKEY_NAME=your-hotkey-name \
+  -e COLDKEY_MNEMONIC="your coldkey mnemonic phrase here" \
+  -e HOTKEY_MNEMONIC="your hotkey mnemonic phrase here" \
   -e NETUID=165 \
   -e SUBTENSOR_NETWORK=finney \
   -p 8081:8081 \
   masaengineering/subnet42:latest
 ```
+
+### Security Note
+
+The mnemonic phrases are sensitive information. In production:
+1. Use environment files or secure secret management systems
+2. Never commit mnemonics to version control
+3. Consider using hardware security modules (HSMs) for key storage
+4. Rotate keys periodically following security best practices
 
 ## Monitoring
 
@@ -114,15 +136,16 @@ For more detailed information about the TEE worker requirements and setup, pleas
 ### Prerequisites
 - A Kubernetes cluster
 - `kubectl` configured to access your cluster
-- Your Bittensor hotkey (for validator or miner)
+- Your Bittensor wallet mnemonics (coldkey and hotkey)
 
 ### Validator Deployment
 
-1. Create a secret with your validator hotkey:
+1. Create secrets for your validator mnemonics:
 ```bash
-# Create the secret from your hotkey file
-kubectl create secret generic bittensor-hotkey \
-  --from-file=hotkey=/path/to/your/hotkey
+# Create secrets for coldkey and hotkey mnemonics
+kubectl create secret generic bittensor-mnemonics \
+  --from-literal=coldkey-mnemonic="your coldkey mnemonic phrase here" \
+  --from-literal=hotkey-mnemonic="your hotkey mnemonic phrase here"
 ```
 
 2. Create the validator deployment:
@@ -146,17 +169,24 @@ spec:
       - name: validator
         image: masaengineering/subnet42:latest
         command: ["/bin/bash"]
-        args: ["/app/k8s_entrypoint.sh"]
+        args: ["/app/entrypoint.sh"]
         env:
-        - name: BITTENSOR_HOTKEY
+        - name: COLDKEY_MNEMONIC
           valueFrom:
             secretKeyRef:
-              name: bittensor-hotkey
-              key: hotkey
+              name: bittensor-mnemonics
+              key: coldkey-mnemonic
+        - name: HOTKEY_MNEMONIC
+          valueFrom:
+            secretKeyRef:
+              name: bittensor-mnemonics
+              key: hotkey-mnemonic
         - name: NETUID
           value: "165"  # Change to 59 for mainnet
         - name: SUBTENSOR_NETWORK
           value: "finney"  # Change to "test" for testnet
+        - name: ROLE
+          value: "validator"
         ports:
         - containerPort: 8081
         resources:
@@ -175,11 +205,12 @@ kubectl apply -f validator-deployment.yaml
 
 ### Miner Deployment
 
-1. Create a secret with your miner hotkey:
+1. Create secrets for your miner mnemonics:
 ```bash
-# Create the secret from your hotkey file
-kubectl create secret generic bittensor-miner-hotkey \
-  --from-file=hotkey=/path/to/your/miner/hotkey
+# Create secrets for coldkey and hotkey mnemonics
+kubectl create secret generic bittensor-miner-mnemonics \
+  --from-literal=coldkey-mnemonic="your miner coldkey mnemonic phrase here" \
+  --from-literal=hotkey-mnemonic="your miner hotkey mnemonic phrase here"
 ```
 
 2. Create the miner deployment:
@@ -203,13 +234,18 @@ spec:
       - name: miner
         image: masaengineering/subnet42:latest
         command: ["/bin/bash"]
-        args: ["/app/k8s_entrypoint.sh"]
+        args: ["/app/entrypoint.sh"]
         env:
-        - name: BITTENSOR_HOTKEY
+        - name: COLDKEY_MNEMONIC
           valueFrom:
             secretKeyRef:
-              name: bittensor-miner-hotkey
-              key: hotkey
+              name: bittensor-miner-mnemonics
+              key: coldkey-mnemonic
+        - name: HOTKEY_MNEMONIC
+          valueFrom:
+            secretKeyRef:
+              name: bittensor-miner-mnemonics
+              key: hotkey-mnemonic
         - name: NETUID
           value: "165"  # Change to 59 for mainnet
         - name: SUBTENSOR_NETWORK
@@ -232,6 +268,15 @@ spec:
 ```bash
 kubectl apply -f miner-deployment.yaml
 ```
+
+### Security Note
+
+The mnemonic phrases are sensitive information. In production:
+1. Use a secure secret management system (e.g., HashiCorp Vault, AWS Secrets Manager)
+2. Consider using Kubernetes External Secrets Operator
+3. Rotate secrets periodically
+4. Use network policies to restrict pod communication
+5. Enable Kubernetes RBAC with minimal permissions
 
 ### Monitoring in Kubernetes
 
@@ -261,8 +306,8 @@ kubectl describe pod -l app=subnet42-miner
 
 2. Verify secrets are properly mounted:
 ```bash
-kubectl describe secret bittensor-hotkey
-kubectl describe secret bittensor-miner-hotkey
+kubectl describe secret bittensor-mnemonics
+kubectl describe secret bittensor-miner-mnemonics
 ```
 
 3. Check container logs for detailed error messages:
