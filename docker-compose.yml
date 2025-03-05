@@ -27,7 +27,7 @@ services:
       - "${MINER_PORT:-8082}:8081"
     environment:
       - ROLE=${ROLE:-miner}
-      - AUTO_GENERATE_HOTKEY=true
+      - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
     command: ["/bin/bash", "/app/entrypoint.sh"]
     env_file: .env
     logging:
