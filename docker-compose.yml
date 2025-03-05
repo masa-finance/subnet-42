@@ -1,5 +1,20 @@
 services:
-  subnet42-miner:
+  nats:
+    profiles:
+      - nats
+      - validator
+    image: nats:latest
+    ports:
+      - "4222:4222"
+    command: ["--jetstream"]
+    healthcheck:
+      test: ["CMD", "nats-server", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  subnet42:
+    profiles: ["miner", "validator"]
     image: masaengineering/subnet42:latest
     build:
       context: .
@@ -11,7 +26,7 @@ services:
     ports:
       - "${MINER_PORT:-8082}:8081"
     environment:
-      - ROLE=miner
+      - ROLE=${ROLE:-miner}
     env_file: .env
     logging:
       driver: json-file
@@ -26,13 +41,9 @@ services:
       - ./validator:/app/validator
       - ./interfaces:/app/interfaces
       - ./scripts:/app/scripts
-    depends_on:
-      nats:
-        condition: service_healthy
-      tee-worker:
-        condition: service_started
 
   tee-worker:
+    profiles: ["miner"]
     image: masaengineering/tee-worker:latest
     environment:
       - ROLE=validator
@@ -45,11 +56,11 @@ services:
     volumes:
       - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ${CONFIG_PATH:-./config}:/app/config
-      - ./neurons:/app/neurons:ro
-      - ./miner:/app/miner:ro
-      - ./validator:/app/validator:ro
-      - ./interfaces:/app/interfaces:ro
-      - ./scripts:/app/scripts:ro
+      - ./neurons:/app/neurons
+      - ./miner:/app/miner
+      - ./validator:/app/validator
+      - ./interfaces:/app/interfaces
+      - ./scripts:/app/scripts
 
 volumes:
   nats_data:
