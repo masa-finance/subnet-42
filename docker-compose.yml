@@ -21,16 +21,11 @@ services:
     volumes:
       - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ${CONFIG_PATH:-./config}:/app/config
-      x-mounts:
-        when:
-          variable: DEV_MODE
-          value: "true"
-        volumes:
-          - ./neurons:/app/neurons
-          - ./miner:/app/miner
-          - ./validator:/app/validator
-          - ./interfaces:/app/interfaces
-          - ./scripts:/app/scripts
+      - ./neurons:/app/neurons
+      - ./miner:/app/miner
+      - ./validator:/app/validator
+      - ./interfaces:/app/interfaces
+      - ./scripts:/app/scripts
     depends_on:
       nats:
         condition: service_healthy
@@ -50,11 +45,11 @@ services:
     volumes:
       - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
       - ${CONFIG_PATH:-./config}:/app/config
-      - ./neurons:/app/neurons
-      - ./miner:/app/miner
-      - ./validator:/app/validator
-      - ./interfaces:/app/interfaces
-      - ./scripts:/app/scripts
+      - ./neurons:/app/neurons:ro
+      - ./miner:/app/miner:ro
+      - ./validator:/app/validator:ro
+      - ./interfaces:/app/interfaces:ro
+      - ./scripts:/app/scripts:ro
 
 volumes:
   nats_data:
