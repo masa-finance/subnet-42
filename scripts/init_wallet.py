@@ -4,7 +4,13 @@ import pathlib
 import logging
 
 def init_wallet():
-    # Initialize wallet
+    # Check if we already have a valid coldkey
+    coldkey_path = pathlib.Path('/root/.bittensor/wallets/default/coldkey/default')
+    if coldkey_path.exists():
+        print("Found existing coldkey, skipping initialization")
+        return
+
+    # Initialize wallet only if we need to create a new one
     wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
 
     # Suppress bittensor logging during key operations
@@ -13,19 +19,16 @@ def init_wallet():
     bt_logger.setLevel(logging.ERROR)
 
     try:
-        # Only regenerate coldkey if it doesn't exist
-        coldkey_path = pathlib.Path('/root/.bittensor/wallets/default/coldkey/default')
-        if not coldkey_path.exists():
-            coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
-            if not coldkey_mnemonic:
-                raise Exception('COLDKEY_MNEMONIC environment variable is required')
-                
-            # Regenerate coldkey - ignore return value since it outputs success message
-            wallet.regenerate_coldkey(
-                mnemonic=coldkey_mnemonic,
-                use_password=False,
-                overwrite=True
-            )
+        coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
+        if not coldkey_mnemonic:
+            raise Exception('COLDKEY_MNEMONIC environment variable is required')
+            
+        # Regenerate coldkey - ignore return value since it outputs success message
+        wallet.regenerate_coldkey(
+            mnemonic=coldkey_mnemonic,
+            use_password=False,
+            overwrite=True
+        )
 
         # Handle hotkey generation
         auto_generate = os.getenv('AUTO_GENERATE_HOTKEY', '').lower() == 'true'
