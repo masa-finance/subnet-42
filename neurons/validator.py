@@ -42,9 +42,6 @@ SYNC_LOOP_CADENCE_SECONDS = 10
 class Validator:
     def __init__(self):
         """Initialize validator"""
-        # Debug print all environment variables
-        print("ALL ENV VARS:", os.environ)
-        
         # Explicitly get environment variables
         self.config = Config()
         self.http_client_manager = HttpClientManager()

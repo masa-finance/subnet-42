@@ -37,7 +37,6 @@ fi
 # Start the validator/miner
 if [ "$ROLE" = "validator" ]; then
     echo "Starting validator..."
-    env
     exec python scripts/run_validator.py
 else
     echo "Starting miner..."
