@@ -3,6 +3,7 @@ import bittensor as bt
 import pathlib
 import logging
 
+
 def init_wallet():
     # Check if we already have a valid coldkey
     coldkey_path = pathlib.Path('/root/.bittensor/wallets/default/coldkey/default')
@@ -13,10 +14,8 @@ def init_wallet():
     # Initialize wallet only if we need to create a new one
     wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
 
-    # Suppress bittensor logging during key operations
-    bt_logger = logging.getLogger('bittensor')
-    original_level = bt_logger.level
-    bt_logger.setLevel(logging.ERROR)
+    # Configure bittensor logging to be minimal
+    bt.logging().off()
 
     try:
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
@@ -52,8 +51,8 @@ def init_wallet():
                        'AUTO_GENERATE_HOTKEY must be set to true')
                 raise Exception(msg)
     finally:
-        # Restore original logging level
-        bt_logger.setLevel(original_level)
+        # Re-enable logging
+        bt.logging().on()
 
 
 if __name__ == '__main__':
