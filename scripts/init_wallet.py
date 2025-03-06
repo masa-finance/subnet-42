@@ -4,8 +4,8 @@ import pathlib
 
 
 def init_wallet():
-    # Use validator or miner wallet name based on role
-    wallet_name = os.getenv('ROLE', 'miner')
+    # Use validator wallet name from config, default to 'default' for miner
+    wallet_name = os.getenv('VALIDATOR_WALLET_NAME', 'default')
     
     # Check if wallet directory exists and has files (mounted from host)
     wallet_dir = pathlib.Path('/root/.bittensor/wallets')
