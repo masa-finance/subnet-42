@@ -9,7 +9,7 @@ def init_wallet():
 
     try:
         # Initialize wallet - always use default names
-        wallet = bt.wallet(name='default', path='~/.bittensor/wallets/')
+        wallet = bt.wallet(name='default', path=os.path.join(os.environ['HOME'], '.bittensor/wallets/'))
 
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
         if not coldkey_mnemonic:
@@ -22,7 +22,7 @@ def init_wallet():
         )
 
         # Check if hotkey exists before regenerating
-        hotkey_path = pathlib.Path('/root/.bittensor/wallets/default/hotkeys/default')
+        hotkey_path = pathlib.Path(os.path.join(os.environ['HOME'], '.bittensor/wallets/default/hotkeys/default'))
         if not hotkey_path.exists():
             hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
             if hotkey_mnemonic:
