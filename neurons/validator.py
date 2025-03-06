@@ -42,8 +42,10 @@ SYNC_LOOP_CADENCE_SECONDS = 10
 class Validator:
     def __init__(self):
         """Initialize validator"""
-        load_dotenv()
-
+        # Debug print all environment variables
+        print("ALL ENV VARS:", os.environ)
+        
+        # Explicitly get environment variables
         self.config = Config()
         self.http_client_manager = HttpClientManager()
 
@@ -53,20 +55,18 @@ class Validator:
 
         self.netuid = int(os.getenv("NETUID", "42"))
 
-        self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
-        self.subtensor_address = os.getenv(
-            "SUBTENSOR_ADDRESS", "wss://entrypoint-finney.opentensor.ai:443"
-        )
+        self.subtensor_network = os.getenv("SUBTENSOR_NETWORK")
+        self.subtensor_address = os.getenv("SUBTENSOR_ADDRESS")
 
         self.server: Optional[factory_app] = None
         self.app: Optional[FastAPI] = None
 
         self.substrate = interface.get_substrate(
-            subtensor_network=self.config.SUBTENSOR_NETWORK,
-            subtensor_address=self.config.SUBTENSOR_ADDRESS,
+            subtensor_network=self.subtensor_network,
+            subtensor_address=self.subtensor_address,
         )
 
-        self.metagraph = Metagraph(netuid=self.config.NETUID, substrate=self.substrate)
+        self.metagraph = Metagraph(netuid=self.netuid, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
         self.node_manager = NodeManager(validator=self)
