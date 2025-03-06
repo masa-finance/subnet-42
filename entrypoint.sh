@@ -1,15 +1,17 @@
 #!/bin/bash
-set -ex
-
+set -e
 # Trap all exits
 trap 'echo "Script exiting with code $?"' EXIT
+
+# Turn off command echoing before handling sensitive data
+set +x
 
 # If we have a mounted wallet, skip all initialization
 if [ -d "/root/.bittensor/wallets" ] && [ "$(ls -A /root/.bittensor/wallets)" ]; then
     echo "Found mounted wallet, skipping initialization"
 else
     # Only do initialization if no mounted wallet
-    if [ -z "$COLDKEY_MNEMONIC" ]; then
+    if [ -z "${COLDKEY_MNEMONIC+x}" ]; then    # Check if variable exists without exposing value
         echo "Error: COLDKEY_MNEMONIC environment variable is required"
         exit 1
     fi
@@ -19,6 +21,9 @@ else
         exit 1
     fi
 fi
+
+# Re-enable command echoing for the rest of the script
+set -x
 
 # Debug role
 echo "ROLE is set to: '$ROLE'"
