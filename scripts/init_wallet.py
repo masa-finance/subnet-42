@@ -4,19 +4,19 @@ import pathlib
 
 
 def init_wallet():
-    # Check if we already have a valid coldkey
+    # Check if we already have a valid coldkey before doing ANY bittensor operations
     coldkey_path = pathlib.Path('/root/.bittensor/wallets/default/coldkey/default')
     if coldkey_path.exists():
         print("Found existing coldkey, skipping initialization")
         return
 
-    # Initialize wallet only if we need to create a new one
-    wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
-
     # Disable bittensor logging during wallet operations
     bt.logging.disable_logging()
 
     try:
+        # Initialize wallet only after we've confirmed we need to create/regenerate keys
+        wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
+
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
         if not coldkey_mnemonic:
             raise Exception('COLDKEY_MNEMONIC environment variable is required')
