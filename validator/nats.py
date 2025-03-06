@@ -36,7 +36,7 @@ class MinersNATSPublisher:
                     overwrite_localhost
                     if (node.ip == "1" or node.ip == "0.0.0.1")
                     and overwrite_localhost is not None
-                    else f"{node.ip}:{node.port}"
+                    else f"http://{node.ip}:{node.port}"
                 )
                 for node in connected_nodes.values()
             ]
