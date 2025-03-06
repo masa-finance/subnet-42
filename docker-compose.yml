@@ -36,7 +36,6 @@ services:
       - SUBTENSOR_NETWORK=test
       - NETUID=${NETUID:-165}
       - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
-    command: ["/bin/bash", "/app/entrypoint.sh"]
     env_file: .env
     logging:
       driver: json-file

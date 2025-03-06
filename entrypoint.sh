@@ -7,7 +7,7 @@ trap 'echo "Script exiting with code $?"' EXIT
 set +x
 
 # If we have a mounted wallet, skip all initialization
-if [ -d "/root/.bittensor/wallets" ] && [ "$(ls -A /root/.bittensor/wallets)" ]; then
+if [ -d "$HOME/.bittensor/wallets" ] && [ "$(ls -A $HOME/.bittensor/wallets)" ]; then
     echo "Found mounted wallet, skipping initialization"
 else
     # Only do initialization if no mounted wallet
@@ -16,10 +16,13 @@ else
         exit 1
     fi
 
-    if ! python scripts/init_wallet.py; then
+    echo "Initializing wallet..."
+    # Redirect all output to /dev/null during wallet initialization
+    if ! python scripts/init_wallet.py > /dev/null 2>&1; then
         echo "Error: Wallet initialization failed"
         exit 1
     fi
+    echo "Wallet initialization complete"
 fi
 
 # Re-enable command echoing for the rest of the script
@@ -29,13 +32,13 @@ set -x
 echo "ROLE is set to: '$ROLE'"
 
 # Verify wallet and hotkey exist in the correct location
-if [ ! -d "/root/.bittensor/wallets/default" ]; then
-    echo "Error: Wallet directory not found at /root/.bittensor/wallets/default"
+if [ ! -d "$HOME/.bittensor/wallets/default" ]; then
+    echo "Error: Wallet directory not found at $HOME/.bittensor/wallets/default"
     exit 1
 fi
 
-if [ ! -f "/root/.bittensor/wallets/default/hotkeys/default" ]; then
-    echo "Error: Hotkey not found at /root/.bittensor/wallets/default/hotkeys/default"
+if [ ! -f "$HOME/.bittensor/wallets/default/hotkeys/default" ]; then
+    echo "Error: Hotkey not found at $HOME/.bittensor/wallets/default/hotkeys/default"
     exit 1
 fi
 

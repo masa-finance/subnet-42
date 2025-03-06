@@ -9,7 +9,7 @@ def init_wallet():
 
     try:
         # Initialize wallet - always use default names
-        wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
+        wallet = bt.wallet(name='default', path='~/.bittensor/wallets/')
 
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
         if not coldkey_mnemonic:

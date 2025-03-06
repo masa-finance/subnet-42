@@ -32,9 +32,9 @@ COPY neurons neurons/
 COPY miner miner/
 COPY validator validator/
 
-# Copy entrypoint script last since it changes most frequently
+# Copy entrypoint script and make it executable
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
-# Default command (can be overridden by docker-compose)
-CMD ["sh", "-c", "if [ \"$ROLE\" = \"validator\" ]; then python scripts/run_validator.py; else python scripts/run_miner.py; fi"] 
+# Use entrypoint.sh as the entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"] 
