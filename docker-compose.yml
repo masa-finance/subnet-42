@@ -32,7 +32,7 @@ services:
     environment:
       - ROLE=${ROLE:-miner}
       - WALLET_NAME=${WALLET_NAME:-default}
-      - VALIDATOR_WALLET_NAME=${VALIDATOR_WALLET_NAME:-default}
+      - VALIDATOR_WALLET_NAME=default
       - SUBTENSOR_NETWORK=test
       - NETUID=${NETUID:-165}
       - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
