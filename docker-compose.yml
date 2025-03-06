@@ -26,14 +26,15 @@ services:
           variable: BUILD_LOCAL
           value: "true"
     ports:
-      - "${MINER_PORT:-8082}:8081"
+      - "${VALIDATOR_PORT:-8092}:8092"
+      - "${MINER_PORT:-8091}:8091"
     # volumes:
     #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     environment:
       - ROLE=${ROLE:-miner}
       - WALLET_NAME=${WALLET_NAME:-default}
       - VALIDATOR_WALLET_NAME=default
-      - SUBTENSOR_NETWORK=test
+      - SUBTENSOR_NETWORK=${SUBTENSOR_NETWORK:-test}
       - NETUID=${NETUID:-165}
       - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
     env_file: .env

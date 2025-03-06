@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-
 import os
 import httpx
 import uvicorn
@@ -28,9 +26,8 @@ def run_server(app, port):
 class AgentMiner:
     def __init__(self):
         """Initialize miner"""
-        load_dotenv()
 
-        self.wallet_name = os.getenv("WALLET_NAME", "miner")
+        self.wallet_name = os.getenv("WALLET_NAME", "default")
         self.hotkey_name = os.getenv("HOTKEY_NAME", "default")
         self.port = int(os.getenv("MINER_PORT", 8082))
         self.external_ip = self.get_external_ip()
@@ -39,13 +36,11 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        self.netuid = int(os.getenv("NETUID", "42"))
+        
         self.httpx_client: Optional[httpx.AsyncClient] = None
-
-        self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
-        self.subtensor_address = os.getenv(
-            "SUBTENSOR_ADDRESS", "wss://entrypoint-finney.opentensor.ai:443"
-        )
+        self.netuid = int(os.getenv("NETUID", "42"))
+        self.subtensor_network = os.getenv("SUBTENSOR_NETWORK")
+        self.subtensor_address = os.getenv("SUBTENSOR_ADDRESS")
 
         self.server: Optional[factory_app] = None
         self.app: Optional[FastAPI] = None
