@@ -4,6 +4,9 @@ import pathlib
 
 
 def init_wallet():
+    # Use validator or miner wallet name based on role
+    wallet_name = os.getenv('ROLE', 'miner')
+    
     # Check if wallet directory exists and has files (mounted from host)
     wallet_dir = pathlib.Path('/root/.bittensor/wallets')
     if wallet_dir.exists() and any(wallet_dir.iterdir()):
@@ -15,7 +18,7 @@ def init_wallet():
 
     try:
         # Initialize wallet only after we've confirmed we need to create/regenerate keys
-        wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
+        wallet = bt.wallet(name=wallet_name, path='/root/.bittensor/wallets/')
 
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
         if not coldkey_mnemonic:
@@ -32,7 +35,7 @@ def init_wallet():
         hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
 
         # Only generate/regenerate hotkey if it doesn't exist
-        hotkey_path = pathlib.Path('/root/.bittensor/wallets/default/hotkeys/default')
+        hotkey_path = pathlib.Path(f'/root/.bittensor/wallets/{wallet_name}/hotkeys/default')
         if not hotkey_path.exists():
             if auto_generate:
                 # Generate new hotkey - ignore return value

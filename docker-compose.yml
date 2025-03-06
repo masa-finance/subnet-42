@@ -30,6 +30,7 @@ services:
     environment:
       - ROLE=${ROLE:-miner}
       - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
+      - VALIDATOR_WALLET_NAME=default
     command: ["/bin/bash", "/app/entrypoint.sh"]
     env_file: .env
     logging:
