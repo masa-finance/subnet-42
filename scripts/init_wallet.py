@@ -30,23 +30,23 @@ def init_wallet():
             use_password=False
         )
 
-        # Handle hotkey generation
-        auto_generate = os.getenv('AUTO_GENERATE_HOTKEY', '').lower() == 'true'
-        hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
-
-        if auto_generate:
-            # Generate new hotkey - ignore return value
-            wallet.create_new_hotkey(use_password=False)
-        elif hotkey_mnemonic:
-            # Use provided mnemonic - ignore return value
-            wallet.regenerate_hotkey(
-                mnemonic=hotkey_mnemonic,
-                use_password=False
-            )
-        else:
-            msg = ('Either HOTKEY_MNEMONIC must be provided or '
-                   'AUTO_GENERATE_HOTKEY must be set to true')
-            raise Exception(msg)
+        # Check if hotkey exists before regenerating
+        hotkey_path = pathlib.Path(f'/root/.bittensor/wallets/{wallet_name}/hotkeys/default')
+        if not hotkey_path.exists():
+            hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
+            if hotkey_mnemonic:
+                # Use provided mnemonic - ignore return value
+                wallet.regenerate_hotkey(
+                    mnemonic=hotkey_mnemonic,
+                    use_password=False
+                )
+            elif os.getenv('AUTO_GENERATE_HOTKEY', '').lower() == 'true':
+                # Generate new hotkey - ignore return value
+                wallet.create_new_hotkey(use_password=False)
+            else:
+                msg = ('Either HOTKEY_MNEMONIC must be provided or '
+                       'AUTO_GENERATE_HOTKEY must be set to true')
+                raise Exception(msg)
     finally:
         # Re-enable default logging
         bt.logging.enable_default()
