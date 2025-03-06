@@ -4,17 +4,12 @@ import pathlib
 
 
 def init_wallet():
-    # Use miner for miner role, validator for validator role
-    # Default to miner if ROLE isn't set, matching docker-compose
-    role = os.getenv('ROLE', 'miner')
-    wallet_name = 'validator' if role == 'validator' else 'miner'
-
     # Disable bittensor logging during wallet operations
     bt.logging.disable_logging()
 
     try:
-        # Initialize wallet
-        wallet = bt.wallet(name=wallet_name, path='/root/.bittensor/wallets/')
+        # Initialize wallet - always use default names
+        wallet = bt.wallet(name='default', path='/root/.bittensor/wallets/')
 
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
         if not coldkey_mnemonic:
@@ -27,7 +22,7 @@ def init_wallet():
         )
 
         # Check if hotkey exists before regenerating
-        hotkey_path = pathlib.Path(f'/root/.bittensor/wallets/{wallet_name}/hotkeys/default')
+        hotkey_path = pathlib.Path('/root/.bittensor/wallets/default/hotkeys/default')
         if not hotkey_path.exists():
             hotkey_mnemonic = os.getenv('HOTKEY_MNEMONIC')
             if hotkey_mnemonic:

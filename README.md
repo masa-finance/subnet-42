@@ -73,3 +73,115 @@ docker compose --profile miner up
 - Ensure your hotkey is already registered on the subnet
 - Check logs for any initialization errors
 - Verify your mnemonics are correct
+
+## Kubernetes Deployment
+
+1. Create secrets for your mnemonics:
+```bash
+# For a miner
+kubectl create secret generic subnet42-miner-keys \
+  --from-literal=coldkey-mnemonic="your coldkey mnemonic" \
+  --from-literal=hotkey-mnemonic="your hotkey mnemonic"
+
+# For a validator
+kubectl create secret generic subnet42-validator-keys \
+  --from-literal=coldkey-mnemonic="your coldkey mnemonic" \
+  --from-literal=hotkey-mnemonic="your hotkey mnemonic"
+```
+
+2. Create deployment:
+```yaml
+# miner-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subnet42-miner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: subnet42-miner
+  template:
+    metadata:
+      labels:
+        app: subnet42-miner
+    spec:
+      containers:
+      - name: subnet42
+        image: masaengineering/subnet-42:latest
+        imagePullPolicy: Always
+        env:
+        - name: ROLE
+          value: "miner"
+        - name: COLDKEY_MNEMONIC
+          valueFrom:
+            secretKeyRef:
+              name: subnet42-miner-keys
+              key: coldkey-mnemonic
+        - name: HOTKEY_MNEMONIC
+          valueFrom:
+            secretKeyRef:
+              name: subnet42-miner-keys
+              key: hotkey-mnemonic
+      - name: tee-worker
+        image: masaengineering/tee-worker:latest
+        imagePullPolicy: Always
+```
+
+For a validator, use:
+```yaml
+# validator-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subnet42-validator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: subnet42-validator
+  template:
+    metadata:
+      labels:
+        app: subnet42-validator
+    spec:
+      containers:
+      - name: nats
+        image: nats:latest
+        args: ["--jetstream"]
+      - name: subnet42
+        image: masaengineering/subnet-42:latest
+        imagePullPolicy: Always
+        env:
+        - name: ROLE
+          value: "validator"
+        - name: COLDKEY_MNEMONIC
+          valueFrom:
+            secretKeyRef:
+              name: subnet42-validator-keys
+              key: coldkey-mnemonic
+        - name: HOTKEY_MNEMONIC
+          valueFrom:
+            secretKeyRef:
+              name: subnet42-validator-keys
+              key: hotkey-mnemonic
+```
+3. Deploy:
+```bash
+# For miner
+kubectl apply -f miner-deployment.yaml
+
+# For validator
+kubectl apply -f validator-deployment.yaml
+```
+
+4. View logs:
+```bash
+# For miner
+kubectl logs -f deployment/subnet42-miner -c subnet42
+kubectl logs -f deployment/subnet42-miner -c tee-worker
+
+# For validator
+kubectl logs -f deployment/subnet42-validator -c subnet42
+kubectl logs -f deployment/subnet42-validator -c nats
+```

@@ -31,9 +31,9 @@ services:
     #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     environment:
       - ROLE=${ROLE:-miner}
+      - WALLET_NAME=${WALLET_NAME:-default}
+      - VALIDATOR_WALLET_NAME=${VALIDATOR_WALLET_NAME:-default}
       - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
-      - VALIDATOR_WALLET_NAME=validator
-      - VALIDATOR_HOTKEY_NAME=default
     command: ["/bin/bash", "/app/entrypoint.sh"]
     env_file: .env
     logging:

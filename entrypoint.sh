@@ -23,6 +23,17 @@ fi
 # Debug role
 echo "ROLE is set to: '$ROLE'"
 
+# Verify wallet and hotkey exist in the correct location
+if [ ! -d "/root/.bittensor/wallets/default" ]; then
+    echo "Error: Wallet directory not found at /root/.bittensor/wallets/default"
+    exit 1
+fi
+
+if [ ! -f "/root/.bittensor/wallets/default/hotkeys/default" ]; then
+    echo "Error: Hotkey not found at /root/.bittensor/wallets/default/hotkeys/default"
+    exit 1
+fi
+
 # Start the validator/miner
 if [ "$ROLE" = "validator" ]; then
     echo "Starting validator..."
