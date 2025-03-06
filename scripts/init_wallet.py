@@ -5,7 +5,9 @@ import pathlib
 
 def init_wallet():
     # Use miner for miner role, validator for validator role
-    wallet_name = 'validator' if os.getenv('ROLE') == 'validator' else 'miner'
+    # Default to miner if ROLE isn't set, matching docker-compose
+    role = os.getenv('ROLE', 'miner')
+    wallet_name = 'validator' if role == 'validator' else 'miner'
 
     # Disable bittensor logging during wallet operations
     bt.logging.disable_logging()

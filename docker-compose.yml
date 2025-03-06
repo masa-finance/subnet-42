@@ -27,14 +27,13 @@ services:
           value: "true"
     ports:
       - "${MINER_PORT:-8082}:8081"
-    volumes:
-      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+    # volumes:
+    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     environment:
       - ROLE=${ROLE:-miner}
       - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
       - VALIDATOR_WALLET_NAME=validator
       - VALIDATOR_HOTKEY_NAME=default
-      - WALLET_NAME=default
     command: ["/bin/bash", "/app/entrypoint.sh"]
     env_file: .env
     logging:
