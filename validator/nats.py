@@ -2,6 +2,7 @@ import os
 from miner.nats_client import NatsClient
 from typing import TYPE_CHECKING
 from fiber.logging_utils import get_logger
+from validator.telemetry import TEETelemetryClient
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -27,9 +28,16 @@ class MinersNATSPublisher:
         # This is for testnet only
         overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", None)
 
+        logger.info(f"OVERWRITE_LOCAL_TEE: {overwrite_localhost}")
+
         miners_list = (
             [
-                f"{overwrite_localhost if node.ip == '1' and overwrite_localhost is not None else f"{node.ip}:{node.port}"}"
+                (
+                    overwrite_localhost
+                    if (node.ip == "1" or node.ip == "0.0.0.1")
+                    and overwrite_localhost is not None
+                    else f"{node.ip}:{node.port}"
+                )
                 for node in connected_nodes.values()
             ]
             if connected_nodes
