@@ -16,10 +16,13 @@ else
         exit 1
     fi
 
-    if ! python scripts/init_wallet.py; then
+    echo "Initializing wallet..."
+    # Redirect all output to /dev/null during wallet initialization
+    if ! python scripts/init_wallet.py > /dev/null 2>&1; then
         echo "Error: Wallet initialization failed"
         exit 1
     fi
+    echo "Wallet initialization complete"
 fi
 
 # Re-enable command echoing for the rest of the script
