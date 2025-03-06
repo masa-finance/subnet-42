@@ -4,10 +4,10 @@ import pathlib
 
 
 def init_wallet():
-    # Check if we already have a valid coldkey before doing ANY bittensor operations
-    coldkey_path = pathlib.Path('/root/.bittensor/wallets/default/coldkey/default')
-    if coldkey_path.exists():
-        print("Found existing coldkey, skipping initialization")
+    # Check if wallet directory exists and has files (mounted from host)
+    wallet_dir = pathlib.Path('/root/.bittensor/wallets')
+    if wallet_dir.exists() and any(wallet_dir.iterdir()):
+        print("Found existing mounted wallet directory, skipping initialization")
         return
 
     # Disable bittensor logging during wallet operations
@@ -24,8 +24,7 @@ def init_wallet():
         # Regenerate coldkey - ignore return value since it outputs success message
         wallet.regenerate_coldkey(
             mnemonic=coldkey_mnemonic,
-            use_password=False,
-            overwrite=True
+            use_password=False
         )
 
         # Handle hotkey generation
@@ -42,8 +41,7 @@ def init_wallet():
                 # Use provided mnemonic - ignore return value
                 wallet.regenerate_hotkey(
                     mnemonic=hotkey_mnemonic,
-                    use_password=False,
-                    overwrite=True
+                    use_password=False
                 )
             else:
                 msg = ('Either HOTKEY_MNEMONIC must be provided or '

@@ -37,14 +37,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    volumes:
-      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
-      - ${CONFIG_PATH:-./config}:/app/config
-      - ./neurons:/app/neurons
-      - ./miner:/app/miner
-      - ./validator:/app/validator
-      - ./interfaces:/app/interfaces
-      - ./scripts:/app/scripts
 
   tee-worker:
     profiles: ["miner"]
@@ -58,14 +50,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    volumes:
-      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
-      - ${CONFIG_PATH:-./config}:/app/config
-      - ./neurons:/app/neurons
-      - ./miner:/app/miner
-      - ./validator:/app/validator
-      - ./interfaces:/app/interfaces
-      - ./scripts:/app/scripts
 
 volumes:
   nats_data:
