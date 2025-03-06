@@ -4,20 +4,14 @@ import pathlib
 
 
 def init_wallet():
-    # Use validator wallet name from config, default to 'default' for miner
-    wallet_name = os.getenv('VALIDATOR_WALLET_NAME', 'default')
-    
-    # Check if wallet directory exists and has files (mounted from host)
-    wallet_dir = pathlib.Path('/root/.bittensor/wallets')
-    if wallet_dir.exists() and any(wallet_dir.iterdir()):
-        print("Found existing mounted wallet directory, skipping initialization")
-        return
+    # Use miner for miner role, validator for validator role
+    wallet_name = 'validator' if os.getenv('ROLE') == 'validator' else 'miner'
 
     # Disable bittensor logging during wallet operations
     bt.logging.disable_logging()
 
     try:
-        # Initialize wallet only after we've confirmed we need to create/regenerate keys
+        # Initialize wallet
         wallet = bt.wallet(name=wallet_name, path='/root/.bittensor/wallets/')
 
         coldkey_mnemonic = os.getenv('COLDKEY_MNEMONIC')
