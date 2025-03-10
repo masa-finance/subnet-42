@@ -47,7 +47,7 @@ class BackgroundTasks:
             try:
                 # TODO: Calculate scores and set weights
                 node_data = await self.scorer.get_node_data()
-                # await self.validator.weights_manager.set_weights(node_data)
+                await self.validator.weights_manager.set_weights(node_data)
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
                 logger.error(f"Error in setting weights: {str(e)}")
