@@ -4,7 +4,7 @@ A Bittensor subnet for MASA's Subnet 42.
 
 ## Prerequisites
 
-1. A registered hotkey on subnet 165 (glagolitic_yu) on the test network
+1. A registered hotkey on subnet 165 on the test network, or 42 on finney (mainnet)
 2. Docker and Docker Compose installed
 3. Your coldkey and hotkey mnemonics
 
