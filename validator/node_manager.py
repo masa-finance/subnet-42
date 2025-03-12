@@ -147,33 +147,46 @@ class NodeManager:
         await self.update_tee_list()
 
     async def update_tee_list(self):
+        logger.info("Starting TEE list update")
         routing_table = self.validator.routing_table
         for hotkey, _ in self.connected_nodes.items():
+            logger.info(f"Processing hotkey: {hotkey}")
             if hotkey in self.validator.metagraph.nodes:
                 node = self.validator.metagraph.nodes[hotkey]
-                tee_addresses = await self.get_tee_address(node)
-                logger.info(f"Hotkey: {hotkey}, returned addresses: {tee_addresses}")
+                logger.info(f"Found node in metagraph for hotkey: {hotkey}")
 
-                # Cleaning DB from addresses under this hotkey
-                routing_table.clear_miner(
-                    hotkey=node.hotkey,
-                )
-                logger.info(f"Cleanning hotkey {hotkey} addresses from DB")
-                if tee_addresses:
-                    for tee_address in tee_addresses.split(","):
-                        tee_address = tee_address.strip()
-                        try:
-                            routing_table.add_miner_address(
-                                hotkey, node.node_id, tee_address
-                            )
+                try:
+                    tee_addresses = await self.get_tee_address(node)
+                    logger.info(
+                        f"Retrieved TEE addresses for hotkey {hotkey}: {tee_addresses}"
+                    )
 
-                            logger.info(
-                                f"Hotkey: {hotkey} stored address {tee_address} into DB successfuly."
-                            )
-                        except sqlite3.IntegrityError:
-                            logger.info(
-                                f"Address {tee_address} already exists in the "
-                                "routing table."
-                            )
-                else:
-                    print(f"No addresses returned from hotkey: {node.hotkey}")
+                    # Cleaning DB from addresses under this hotkey
+                    routing_table.clear_miner(hotkey=node.hotkey)
+                    logger.info(f"Cleared existing addresses for hotkey {hotkey}")
+
+                    if tee_addresses:
+                        for tee_address in tee_addresses.split(","):
+                            tee_address = tee_address.strip()
+                            try:
+                                routing_table.add_miner_address(
+                                    hotkey, node.node_id, tee_address
+                                )
+                                logger.info(
+                                    f"Added TEE address {tee_address} for "
+                                    f"hotkey {hotkey}"
+                                )
+                            except sqlite3.IntegrityError:
+                                logger.warning(
+                                    f"TEE address {tee_address} already exists in "
+                                    f"routing table for hotkey {hotkey}"
+                                )
+                    else:
+                        logger.warning(f"No TEE addresses returned for hotkey {hotkey}")
+                except Exception as e:
+                    logger.error(
+                        f"Error processing TEE addresses for hotkey {hotkey}: {e}"
+                    )
+            else:
+                logger.info(f"Hotkey {hotkey} not found in metagraph")
+        logger.info("Completed TEE list update")
