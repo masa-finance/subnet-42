@@ -31,6 +31,8 @@ COPY scripts scripts/
 COPY neurons neurons/
 COPY miner miner/
 COPY validator validator/
+COPY db db/
+
 
 # Copy entrypoint script and make it executable
 COPY entrypoint.sh .

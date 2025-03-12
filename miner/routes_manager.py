@@ -45,8 +45,15 @@ class MinerAPI:
         )
 
         self.app.add_api_route(
-            "/get_information",
+            "/tee",
             self.information_handler,
+            methods=["GET"],
+            tags=["tee address"],
+        )
+
+        self.app.add_api_route(
+            "/get_information",
+            self.tee,
             methods=["GET"],
             tags=["setup"],
         )
@@ -63,6 +70,9 @@ class MinerAPI:
 
     async def information_handler(self, request: Request):
         return self.miner.information_handler()
+
+    async def tee(self, request: Request):
+        return tee_address
 
     async def _reverse_proxy(self, request: Request):
         url = httpx.URL(path=request.url.path, query=request.url.query.encode("utf-8"))

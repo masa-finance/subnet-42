@@ -31,24 +31,26 @@ class WeightsManager:
         self, node_data: List[NodeData]
     ) -> Tuple[List[int], List[float]]:
         """
-        Calculate weights for nodes based on their twitter_returned_tweets.
+        Calculate weights for nodes based on their web_success count.
 
         :param node_data: List of NodeData objects containing node information.
         :return: A tuple containing a list of node IDs and their corresponding weights.
         """
         miner_scores = {}
         if node_data:
-            min_tweets = min(node.twitter_returned_tweets for node in node_data)
-            max_tweets = max(node.twitter_returned_tweets for node in node_data)
-            tweet_range = max_tweets - min_tweets if max_tweets != min_tweets else 1
+            min_success = min(node.web_success for node in node_data)
+            max_success = max(node.web_success for node in node_data)
+            success_range = (
+                max_success - min_success if max_success != min_success else 1
+            )
 
             for node in node_data:
                 try:
                     uid = self.validator.metagraph.nodes[node.hotkey].node_id
                     if uid is not None:
                         miner_scores[uid] = (
-                            node.twitter_returned_tweets - min_tweets
-                        ) / tweet_range
+                            node.web_success - min_success
+                        ) / success_range
                 except KeyError:
                     logger.error(
                         f"Node with hotkey '{node.hotkey}' not found in metagraph."
@@ -64,15 +66,23 @@ class WeightsManager:
 
         :param node_data: List of NodeData objects containing node information.
         """
+        logger.info("Starting weight setting process")
+
+        logger.debug("Refreshing substrate connection")
         self.validator.substrate = interface.get_substrate(
             subtensor_address=self.validator.substrate.url
         )
-        validator_node_id = self.validator.substrate.query(
-            "SubtensorModule",
-            "Uids",
-            [self.validator.netuid, self.validator.keypair.ss58_address],
-        ).value
 
+        logger.debug("Getting validator node ID")
+        # validator_node_id = self.validator.substrate.query(
+        #     "SubtensorModule",
+        #     "Uids",
+        #     [self.validator.netuid, self.validator.keypair.ss58_address],
+        # ).value
+        validator_node_id = 95
+        logger.debug(f"Validator node ID: {validator_node_id}")
+
+        logger.debug("Checking blocks since last update")
         blocks_since_update = weights.blocks_since_last_update(
             self.validator.substrate, self.validator.netuid, validator_node_id
         )
@@ -86,14 +96,17 @@ class WeightsManager:
         if blocks_since_update is not None and blocks_since_update < min_interval:
             wait_blocks = min_interval - blocks_since_update
             wait_seconds = wait_blocks * 12
-            logger.info(f"Waiting {wait_seconds} seconds...")
+            logger.info(f"Need to wait {wait_seconds} seconds before setting weights")
             await asyncio.sleep(wait_seconds)
+            logger.info("Wait period complete")
 
+        logger.debug("Calculating weights")
         uids, scores = self.calculate_weights(node_data)
-
-        logger.info(f"Uids: {uids} Scores: {scores}")
+        logger.info(f"Calculated weights - UIDs: {uids}")
+        logger.info(f"Calculated scores: {scores}")
 
         for attempt in range(3):
+            logger.info(f"Setting weights attempt {attempt + 1}/3")
             try:
                 success = weights.set_node_weights(
                     substrate=self.validator.substrate,
@@ -112,10 +125,14 @@ class WeightsManager:
                     return
                 else:
                     logger.error(f"❌ Failed to set weights on attempt {attempt + 1}")
-                    await asyncio.sleep(10)
+                    if attempt < 2:  # Don't sleep on last attempt
+                        logger.debug("Waiting 10 seconds before next attempt")
+                        await asyncio.sleep(10)
 
             except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
-                await asyncio.sleep(10)
+                logger.error(f"Error on attempt {attempt + 1}: {str(e)}", exc_info=True)
+                if attempt < 2:  # Don't sleep on last attempt
+                    logger.debug("Waiting 10 seconds before next attempt")
+                    await asyncio.sleep(10)
 
         logger.error("Failed to set weights after all attempts")

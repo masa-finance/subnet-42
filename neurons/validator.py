@@ -27,6 +27,8 @@ from validator.nats import MinersNATSPublisher
 from validator.weights import WeightsManager
 from validator.scorer import NodeDataScorer
 
+from validator.routing_table import RoutingTable
+
 logger = get_logger(__name__)
 
 BLOCKS_PER_WEIGHT_SETTING = 100
@@ -63,6 +65,8 @@ class Validator:
             subtensor_address=self.subtensor_address,
         )
 
+        self.routing_table = RoutingTable()
+
         self.metagraph = Metagraph(netuid=self.netuid, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
@@ -87,9 +91,7 @@ class Validator:
             asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
             )
-            asyncio.create_task(
-                self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
-            )
+            asyncio.create_task(self.background_tasks.set_weights_loop(30))
 
             asyncio.create_task(
                 self.background_tasks.update_tee(
