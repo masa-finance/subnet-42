@@ -17,33 +17,15 @@ class MinersNATSPublisher:
 
     async def send_connected_nodes(self):
         # Get connected nodes from the validator
-        connected_nodes = self.validator.node_manager.connected_nodes
+        routing_table = self.validator.routing_table
+        addresses = routing_table.get_all_addresses()
 
-        if len(connected_nodes) == 0:
-            logger.info("Skipping, no nodes connected")
+        if len(addresses) == 0:
+            logger.info("Skipping, no addresses found")
             return
 
-        logger.info("Connecting to nats...")
+        logger.info(f"About to send {len(addresses)} to NATS")
 
-        # This is for testnet only
-        overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", None)
+        logger.info(f"Sending IP list: {addresses}")
 
-        logger.info(f"OVERWRITE_LOCAL_TEE: {overwrite_localhost}")
-
-        miners_list = (
-            [
-                (
-                    overwrite_localhost
-                    if (node.ip == "1" or node.ip == "0.0.0.1")
-                    and overwrite_localhost is not None
-                    else f"http://{node.ip}:{node.port}"
-                )
-                for node in connected_nodes.values()
-            ]
-            if connected_nodes
-            else []
-        )
-
-        logger.info(f"Sending IP list: {miners_list}")
-
-        await self.nc.send_connected_nodes(miners_list)
+        await self.nc.send_connected_nodes(addresses)

@@ -91,7 +91,9 @@ class Validator:
             asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
             )
-            asyncio.create_task(self.background_tasks.set_weights_loop(30))
+            asyncio.create_task(
+                self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
+            )
 
             asyncio.create_task(
                 self.background_tasks.update_tee(

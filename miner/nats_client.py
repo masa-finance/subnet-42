@@ -15,29 +15,31 @@ class NatsClient:
     async def send_connected_nodes(self, miners):
 
         # Connect to the NATS server
-        nats_url = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
+        nats_url = os.getenv("NATS_URL", None)
         logger.info(f"Connecting to NATS server at {nats_url}")
-        await self.nc.connect(nats_url)
 
-        try:
-            nats_message = json.dumps({"Miners": miners})
-            channel_name = os.getenv("TEE_NATS_CHANNEL_NAME", "miners")
+        if nats_url:
+            await self.nc.connect(nats_url)
 
-            logger.info(
-                f"Publishing message to channel '{channel_name}' with {len(miners)} miners"
-            )
-            logger.info(f"Message content: {nats_message}")
+            try:
+                nats_message = json.dumps({"Miners": miners})
+                channel_name = os.getenv("TEE_NATS_CHANNEL_NAME", "miners")
 
-            await self.nc.publish(channel_name, nats_message.encode())
-            logger.info("Successfully published message")
+                logger.info(
+                    f"Publishing message to channel '{channel_name}' with {len(miners)} miners"
+                )
+                logger.info(f"Message content: {nats_message}")
 
-        except Exception as e:
-            logger.info(f"Error publishing message to NATS: {str(e)}")
-            raise
-        finally:
-            # Ensure the NATS connection is closed
-            logger.info("Closing NATS connection")
-            await self.nc.close()
+                await self.nc.publish(channel_name, nats_message.encode())
+                logger.info("Successfully published message")
+
+            except Exception as e:
+                logger.info(f"Error publishing message to NATS: {str(e)}")
+                raise
+            finally:
+                # Ensure the NATS connection is closed
+                logger.info("Closing NATS connection")
+                await self.nc.close()
 
 
 # Example usage
