@@ -46,14 +46,14 @@ class MinerAPI:
 
         self.app.add_api_route(
             "/tee",
-            self.information_handler,
+            self.tee,
             methods=["GET"],
             tags=["tee address"],
         )
 
         self.app.add_api_route(
             "/get_information",
-            self.tee,
+            self.information_handler,
             methods=["GET"],
             tags=["setup"],
         )
