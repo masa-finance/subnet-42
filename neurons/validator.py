@@ -97,7 +97,7 @@ class Validator:
 
             asyncio.create_task(
                 self.background_tasks.update_tee(
-                    int(os.getenv("UPDATE_TEE_CADENCE_SECONDS", "60"))
+                    int(os.getenv("UPDATE_TEE_CADENCE_SECONDS", "120"))
                 )
             )
 

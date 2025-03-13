@@ -34,8 +34,7 @@ class NodeDataScorer:
         nodes = self.validator.routing_table.get_all_addresses_with_hotkeys()
         logger.info(f"Found {len(nodes)} nodes")
 
-        print("************************ NODES")
-        print(nodes)
+        logger.info(f"DB nodes: {nodes}")
 
         node_data = []
         for hotkey, ip in nodes:
