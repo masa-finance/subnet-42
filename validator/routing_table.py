@@ -67,3 +67,19 @@ class RoutingTable:
         except sqlite3.Error as e:
             print(f"Failed to retrieve all addresses: {e}")
             return []
+
+    def get_all_addresses_with_hotkeys(self):
+        """Retrieve a list of all addresses and their associated hotkeys from the database."""
+        try:
+            with self.db.lock, sqlite3.connect(self.db.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT hotkey, address FROM miner_addresses
+                """
+                )
+                results = cursor.fetchall()
+                return [(hotkey, address) for hotkey, address in results]
+        except sqlite3.Error as e:
+            print(f"Failed to retrieve addresses with hotkeys: {e}")
+            return []

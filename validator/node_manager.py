@@ -168,6 +168,13 @@ class NodeManager:
                     if tee_addresses:
                         for tee_address in tee_addresses.split(","):
                             tee_address = tee_address.strip()
+                            # Skip if localhost
+                            if "localhost" in tee_address or "127.0.0.1" in tee_address:
+                                logger.info(
+                                    f"Skipping localhost TEE address {tee_address}"
+                                )
+                                continue
+
                             try:
                                 routing_table.add_miner_address(
                                     hotkey, node.node_id, tee_address

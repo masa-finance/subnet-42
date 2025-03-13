@@ -31,23 +31,20 @@ class NodeDataScorer:
         """
         logger.info("Starting node data retrieval")
         self.validator.metagraph.sync_nodes()
-        connected_nodes = self.validator.node_manager.connected_nodes
-        logger.info(f"Found {len(connected_nodes)} connected nodes")
+        nodes = self.validator.routing_table.get_all_addresses_with_hotkeys()
+        logger.info(f"Found {len(nodes)} nodes")
+
+        print("************************ NODES")
+        print(nodes)
 
         node_data = []
-        for hotkey, node in connected_nodes.items():
-            logger.debug(f"Processing node {hotkey} at IP {node.ip}")
+        for hotkey, ip in nodes:
+            logger.debug(f"Processing node {hotkey} at IP {ip}")
             try:
                 logger.debug(f"Creating telemetry client for node {hotkey}")
-                overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", None)
 
                 # Determine the server address
-                server_address = (
-                    overwrite_localhost
-                    if (node.ip == "1" or node.ip == "0.0.0.1")
-                    and overwrite_localhost is not None
-                    else f"http://{node.ip}:{node.port}"
-                )
+                server_address = ip
                 telemetry_client = TEETelemetryClient(server_address)
 
                 logger.debug(f"Executing telemetry sequence for node {hotkey}")

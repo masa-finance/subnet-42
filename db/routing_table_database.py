@@ -3,7 +3,7 @@ from threading import Lock
 
 
 class RoutingTableDatabase:
-    def __init__(self, db_path="miner_tee_addresses.db"):
+    def __init__(self, db_path="./miner_tee_addresses.db"):
         self.db_path = db_path
         self.lock = Lock()
         self._create_table()
