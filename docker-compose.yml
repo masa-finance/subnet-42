@@ -1,0 +1,61 @@
+services:
+  nats:
+    profiles:
+      - nats
+      - validator
+    image: nats:latest
+    pull_policy: always
+    ports:
+      - "4222:4222"
+    command: ["--jetstream"]
+    healthcheck:
+      test: ["CMD", "nats-server", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  subnet42:
+    profiles: ["miner", "validator"]
+    image: masaengineering/subnet-42:latest
+    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+      x-bake:
+        when:
+          variable: BUILD_LOCAL
+          value: "true"
+    ports:
+      - "${VALIDATOR_PORT:-8092}:8092"
+      - "${MINER_PORT:-8091}:8091"
+    # volumes:
+    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+    environment:
+      - ROLE=${ROLE:-miner}
+      - WALLET_NAME=${WALLET_NAME:-default}
+      - VALIDATOR_WALLET_NAME=${VALIDATOR_WALLET_NAME:-default}
+      - SUBTENSOR_NETWORK=${SUBTENSOR_NETWORK:-test}
+      - NETUID=${NETUID:-165}
+      - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
+    env_file: .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tee-worker:
+    profiles: ["miner"]
+    image: masaengineering/tee-worker:latest
+    pull_policy: always
+    environment:
+      - ROLE=validator
+    env_file: .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nats_data:

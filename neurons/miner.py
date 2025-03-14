@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-
 import os
 import httpx
 import uvicorn
@@ -28,9 +26,8 @@ def run_server(app, port):
 class AgentMiner:
     def __init__(self):
         """Initialize miner"""
-        load_dotenv()
 
-        self.wallet_name = os.getenv("WALLET_NAME", "miner")
+        self.wallet_name = os.getenv("WALLET_NAME", "default")
         self.hotkey_name = os.getenv("HOTKEY_NAME", "default")
         self.port = int(os.getenv("MINER_PORT", 8082))
         self.external_ip = self.get_external_ip()
@@ -39,13 +36,11 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        self.netuid = int(os.getenv("NETUID", "42"))
+        
         self.httpx_client: Optional[httpx.AsyncClient] = None
-
-        self.subtensor_network = os.getenv("SUBTENSOR_NETWORK", "finney")
-        self.subtensor_address = os.getenv(
-            "SUBTENSOR_ADDRESS", "wss://entrypoint-finney.opentensor.ai:443"
-        )
+        self.netuid = int(os.getenv("NETUID", "42"))
+        self.subtensor_network = os.getenv("SUBTENSOR_NETWORK")
+        self.subtensor_address = os.getenv("SUBTENSOR_ADDRESS")
 
         self.server: Optional[factory_app] = None
         self.app: Optional[FastAPI] = None
@@ -57,7 +52,7 @@ class AgentMiner:
         self.metagraph = Metagraph(netuid=self.netuid, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
-        # self.post_ip_to_chain()
+        self.post_ip_to_chain()
 
         self.routes = MinerAPI(self)
 
@@ -93,17 +88,41 @@ class AgentMiner:
             return "0.0.0.0"
 
     def post_ip_to_chain(self) -> None:
+        """Posts the miner's IP and port to the chain if they have changed."""
+        logger.debug("Starting post_ip_to_chain process")
         try:
             node = self.node()
+            logger.debug(f"Retrieved node from metagraph: {node}")
+
             if node:
                 if node.ip != self.external_ip or node.port != self.port:
                     logger.info(
-                        f"Posting IP / Port to Chain: Old IP: {node.ip}, Old Port: {node.port}, "
-                        f"New IP: {self.external_ip}, New Port: {self.port}"
+                        f"IP/Port mismatch detected - Current chain values: "
+                        f"IP={node.ip}, Port={node.port}"
                     )
+                    logger.info(
+                        f"Updating chain with new values: IP={self.external_ip}, "
+                        f"Port={self.port}"
+                    )
+
                     try:
+                        logger.debug(
+                            f"Loading coldkey pub for wallet: {self.wallet_name}"
+                        )
                         coldkey_keypair_pub = chain_utils.load_coldkeypub_keypair(
                             wallet_name=self.wallet_name
+                        )
+                        logger.debug("Successfully loaded coldkey")
+
+                        logger.debug("Posting IP/Port to chain...")
+                        logger.info(
+                            "Posting IP/Port to chain with params:\n"
+                            f"  substrate: {self.substrate}\n"
+                            f"  keypair: {self.keypair}\n"
+                            f"  netuid: {self.netuid}\n"
+                            f"  external_ip: {self.external_ip}\n"
+                            f"  external_port: {self.port}\n"
+                            f"  coldkey_ss58_address: {coldkey_keypair_pub.ss58_address}"
                         )
                         post_ip_to_chain.post_node_ip_to_chain(
                             substrate=self.substrate,
@@ -113,22 +132,28 @@ class AgentMiner:
                             external_port=self.port,
                             coldkey_ss58_address=coldkey_keypair_pub.ss58_address,
                         )
-                        # library will log success message
+                        logger.info("✅ Successfully posted IP/Port to chain")
+
                     except Exception as e:
-                        logger.error(f"Failed to post IP to chain: {e}")
-                        raise Exception("Failed to post IP / Port to chain")
+                        logger.error(
+                            f"Failed to post IP/Port to chain: {str(e)}", exc_info=True
+                        )
+                        raise Exception(f"Failed to post IP/Port to chain {e}") from e
                 else:
                     logger.info(
-                        f"IP / Port already posted to chain: IP: {node.ip}, "
-                        f"Port: {node.port}"
+                        f"IP/Port already up to date on chain: IP={node.ip}, "
+                        f"Port={node.port}"
                     )
             else:
-                raise Exception(
-                    f"Hotkey not found in metagraph. Ensure {self.keypair.ss58_address} "
-                    f"is registered!"
+                err_msg = (
+                    f"Hotkey {self.keypair.ss58_address} not found in metagraph. "
+                    f"Please ensure it is registered."
                 )
+                logger.error(err_msg)
+                raise Exception(err_msg)
+
         except Exception as e:
-            logger.error(f"Error in post_ip_to_chain: {str(e)}")
+            logger.error(f"Error in post_ip_to_chain: {str(e)}", exc_info=True)
             raise
 
     def node(self) -> Optional[Node]:

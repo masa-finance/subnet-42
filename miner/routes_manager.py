@@ -1,10 +1,19 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from miner.utils import (
-    proxy_to_tee,
     healthcheck,
     get_public_key,
     exchange_symmetric_key,
 )
+
+import os
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
+from starlette.background import BackgroundTask
+
+import httpx
+
+tee_address = os.getenv("MINER_TEE_ADDRESS")
+client = httpx.AsyncClient(base_url=tee_address)
 
 
 class MinerAPI:
@@ -36,6 +45,13 @@ class MinerAPI:
         )
 
         self.app.add_api_route(
+            "/tee",
+            self.tee,
+            methods=["GET"],
+            tags=["tee address"],
+        )
+
+        self.app.add_api_route(
             "/get_information",
             self.information_handler,
             methods=["GET"],
@@ -44,7 +60,7 @@ class MinerAPI:
 
         self.app.add_api_route(
             "/job/{path:path}",
-            self.proxy,
+            self._reverse_proxy,
             methods=["GET", "POST", "PUT", "DELETE"],
             tags=["proxy"],
         )
@@ -55,6 +71,21 @@ class MinerAPI:
     async def information_handler(self, request: Request):
         return self.miner.information_handler()
 
-    async def proxy(self, request: Request):
-        response = await proxy_to_tee(request)
-        return response
+    async def tee(self, request: Request):
+        return tee_address
+
+    async def _reverse_proxy(self, request: Request):
+        url = httpx.URL(path=request.url.path, query=request.url.query.encode("utf-8"))
+        rp_req = client.build_request(
+            request.method,
+            url,
+            headers=request.headers.raw,
+            content=await request.body(),
+        )
+        rp_resp = await client.send(rp_req, stream=True)
+        return StreamingResponse(
+            rp_resp.aiter_raw(),
+            status_code=rp_resp.status_code,
+            headers=rp_resp.headers,
+            background=BackgroundTask(rp_resp.aclose),
+        )

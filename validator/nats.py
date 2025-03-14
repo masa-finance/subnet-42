@@ -2,6 +2,7 @@ import os
 from miner.nats_client import NatsClient
 from typing import TYPE_CHECKING
 from fiber.logging_utils import get_logger
+from validator.telemetry import TEETelemetryClient
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -16,26 +17,15 @@ class MinersNATSPublisher:
 
     async def send_connected_nodes(self):
         # Get connected nodes from the validator
-        connected_nodes = self.validator.node_manager.connected_nodes
+        routing_table = self.validator.routing_table
+        addresses = routing_table.get_all_addresses()
 
-        if len(connected_nodes) == 0:
-            logger.info("Skipping, no nodes connected")
+        if len(addresses) == 0:
+            logger.info("Skipping, no addresses found")
             return
 
-        logger.info("Connecting to nats...")
+        logger.info(f"About to send {len(addresses)} to NATS")
 
-        # This is for testnet only
-        overwrite_localhost = os.getenv("OVERWRITE_LOCAL_TEE", None)
+        logger.info(f"Sending IP list: {addresses}")
 
-        miners_list = (
-            [
-                f"{overwrite_localhost if node.ip == '1' and overwrite_localhost is not None else f"{node.ip}:{node.port}"}"
-                for node in connected_nodes.values()
-            ]
-            if connected_nodes
-            else []
-        )
-
-        logger.info(f"Sending IP list: {miners_list}")
-
-        await self.nc.send_connected_nodes(miners_list)
+        await self.nc.send_connected_nodes(addresses)

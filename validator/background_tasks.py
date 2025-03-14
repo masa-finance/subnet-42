@@ -37,7 +37,6 @@ class BackgroundTasks:
             try:
                 await self.validator.NATSPublisher.send_connected_nodes()
                 await asyncio.sleep(cadence_seconds)
-                await self.scorer.get_node_data()
             except Exception as e:
                 logger.error(f"Error in sync metagraph: {str(e)}")
                 await asyncio.sleep(cadence_seconds / 2)  # Wait before retrying
@@ -48,7 +47,7 @@ class BackgroundTasks:
             try:
                 # TODO: Calculate scores and set weights
                 node_data = await self.scorer.get_node_data()
-                # await self.validator.weights_manager.set_weights(node_data)
+                await self.validator.weights_manager.set_weights(node_data)
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
                 logger.error(f"Error in setting weights: {str(e)}")
