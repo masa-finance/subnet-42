@@ -56,8 +56,6 @@ services:
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
-      # - ./.masa:/home/masa  # This maps the ./.masa directory to /home/masa
-    # env_file: .env
     logging:
       driver: json-file
       options:
