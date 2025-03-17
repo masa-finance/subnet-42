@@ -2,6 +2,8 @@ from typing import List, Tuple
 import asyncio
 from fiber.chain import weights, interface
 from fiber.logging_utils import get_logger
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
 
 from neurons import version_numerical
 
@@ -31,26 +33,39 @@ class WeightsManager:
         self, node_data: List[NodeData]
     ) -> Tuple[List[int], List[float]]:
         """
-        Calculate weights for nodes based on their web_success count.
+        Calculate weights for nodes based on their web_success, twitter_returned_tweets, and twitter_returned_profiles.
 
         :param node_data: List of NodeData objects containing node information.
         :return: A tuple containing a list of node IDs and their corresponding weights.
         """
         miner_scores = {}
         if node_data:
-            min_success = min(node.web_success for node in node_data)
-            max_success = max(node.web_success for node in node_data)
-            success_range = (
-                max_success - min_success if max_success != min_success else 1
+            # Extract metrics
+            web_successes = np.array([node.web_success for node in node_data]).reshape(
+                -1, 1
             )
+            tweets = np.array(
+                [node.twitter_returned_tweets for node in node_data]
+            ).reshape(-1, 1)
+            profiles = np.array(
+                [node.twitter_returned_profiles for node in node_data]
+            ).reshape(-1, 1)
 
-            for node in node_data:
+            # Normalize metrics
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            web_successes = scaler.fit_transform(web_successes).flatten()
+            tweets = scaler.fit_transform(tweets).flatten()
+            profiles = scaler.fit_transform(profiles).flatten()
+
+            # Calculate combined score
+            for idx, node in enumerate(node_data):
                 try:
                     uid = self.validator.metagraph.nodes[node.hotkey].node_id
                     if uid is not None:
+                        # Combine scores with equal weight
                         miner_scores[uid] = (
-                            node.web_success - min_success
-                        ) / success_range
+                            web_successes[idx] + tweets[idx] + profiles[idx]
+                        ) / 3
                 except KeyError:
                     logger.error(
                         f"Node with hotkey '{node.hotkey}' not found in metagraph."
