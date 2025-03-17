@@ -52,7 +52,7 @@ services:
       - ROLE=validator
     volumes:
       - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
-    # env_file: .env
+    env_file: .env
     logging:
       driver: json-file
       options:
