@@ -50,7 +50,9 @@ services:
     pull_policy: always
     environment:
       - ROLE=validator
-    env_file: .env
+    volumes:
+      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
+    # env_file: .env
     logging:
       driver: json-file
       options:
