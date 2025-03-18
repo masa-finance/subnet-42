@@ -46,7 +46,7 @@ services:
 
   tee-worker:
     profiles: ["miner"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:main
     pull_policy: always
     environment:
       - ROLE=validator
