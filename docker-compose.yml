@@ -46,11 +46,16 @@ services:
 
   tee-worker:
     profiles: ["miner"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:main
     pull_policy: always
     environment:
       - ROLE=validator
-    env_file: .env
+    devices:
+      - /dev/sgx_enclave
+      - /dev/sgx_provision
+    network_mode: host
+    volumes:
+      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
     logging:
       driver: json-file
       options:
