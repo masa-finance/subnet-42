@@ -12,7 +12,7 @@ class TEETelemetryClient:
         self.tee_worker_address = tee_worker_address
 
     async def generate_telemetry_job(self):
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
                 f"{self.tee_worker_address}/job/generate",
                 headers={"Content-Type": "application/json"},
@@ -30,7 +30,7 @@ class TEETelemetryClient:
             sig = sig[1:-1]
         sig = sig.replace("\\", "")
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
                 f"{self.tee_worker_address}/job/add",
                 headers={"Content-Type": "application/json"},
@@ -41,7 +41,7 @@ class TEETelemetryClient:
             return json_response.get("uid")
 
     async def check_telemetry_job(self, job_uuid):
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.get(
                 f"{self.tee_worker_address}/job/status/{job_uuid}"
             )
@@ -60,7 +60,7 @@ class TEETelemetryClient:
             sig = sig[1:-1]
         sig = sig.replace("\\", "")
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
                 f"{self.tee_worker_address}/job/result",
                 headers={"Content-Type": "application/json"},
@@ -91,9 +91,13 @@ class TEETelemetryClient:
 
                 return result
             except Exception as e:
-                logger.error(f"Error in telemetry sequence: {e}")
+                logger.error(
+                    f"Error in telemetry sequence: {self.tee_worker_address} {e}"
+                )
                 retries += 1
-                logger.info(f"Retrying... ({retries}/{max_retries})")
+                logger.info(
+                    f"Retrying... {self.tee_worker_address} ({retries}/{max_retries})"
+                )
                 await asyncio.sleep(delay)
 
         logger.error("Max retries reached. Telemetry sequence failed.")

@@ -38,41 +38,72 @@ class WeightsManager:
         :param node_data: List of NodeData objects containing node information.
         :return: A tuple containing a list of node IDs and their corresponding weights.
         """
-        miner_scores = {}
-        if node_data:
-            # Extract metrics
-            web_successes = np.array([node.web_success for node in node_data]).reshape(
-                -1, 1
+
+        # Log node data for debugging
+        for node in node_data:
+            logger.info(
+                f"Node {node.hotkey} data:"
+                f"\n\tWeb success: {node.web_success}"
+                f"\n\tTwitter returned tweets: {node.twitter_returned_tweets}"
+                f"\n\tTwitter returned profiles: {node.twitter_returned_profiles}"
+                f"\n\tTwitter errors: {node.twitter_errors}"
+                f"\n\tTwitter auth errors: {node.twitter_auth_errors}"
+                f"\n\tTwitter ratelimit errors: {node.twitter_ratelimit_errors}"
+                f"\n\tWeb errors: {node.web_errors}"
+                f"\n\tBoot time: {node.boot_time}"
+                f"\n\tLast operation time: {node.last_operation_time}"
+                f"\n\tCurrent time: {node.current_time}"
             )
-            tweets = np.array(
-                [node.twitter_returned_tweets for node in node_data]
-            ).reshape(-1, 1)
-            profiles = np.array(
-                [node.twitter_returned_profiles for node in node_data]
-            ).reshape(-1, 1)
+        logger.info("Starting weight calculation")
+        miner_scores = {}
 
-            # Normalize metrics
-            scaler = MinMaxScaler(feature_range=(0, 1))
-            web_successes = scaler.fit_transform(web_successes).flatten()
-            tweets = scaler.fit_transform(tweets).flatten()
-            profiles = scaler.fit_transform(profiles).flatten()
+        if not node_data:
+            logger.warning("No node data provided for weight calculation")
+            return [], []
 
-            # Calculate combined score
-            for idx, node in enumerate(node_data):
-                try:
-                    uid = self.validator.metagraph.nodes[node.hotkey].node_id
-                    if uid is not None:
-                        # Combine scores with equal weight
-                        miner_scores[uid] = (
-                            web_successes[idx] + tweets[idx] + profiles[idx]
-                        ) / 3
-                except KeyError:
-                    logger.error(
-                        f"Node with hotkey '{node.hotkey}' not found in metagraph."
-                    )
+        logger.debug(f"Calculating weights for {len(node_data)} nodes")
+
+        # Extract metrics
+        logger.debug("Extracting node metrics")
+        web_successes = np.array([node.web_success for node in node_data]).reshape(
+            -1, 1
+        )
+        tweets = np.array([node.twitter_returned_tweets for node in node_data]).reshape(
+            -1, 1
+        )
+        profiles = np.array(
+            [node.twitter_returned_profiles for node in node_data]
+        ).reshape(-1, 1)
+
+        # Normalize metrics
+        logger.debug("Normalizing metrics using MinMaxScaler")
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        web_successes = scaler.fit_transform(web_successes).flatten()
+        tweets = scaler.fit_transform(tweets).flatten()
+        profiles = scaler.fit_transform(profiles).flatten()
+
+        # Calculate combined score
+        logger.debug("Calculating combined scores for each node")
+        for idx, node in enumerate(node_data):
+            try:
+                uid = self.validator.metagraph.nodes[node.hotkey].node_id
+                if uid is not None:
+                    # Combine scores with equal weight
+                    score = (web_successes[idx] + tweets[idx] + profiles[idx]) / 3
+                    miner_scores[uid] = score
+                    logger.debug(f"Node {node.hotkey} (UID {uid}) score: {score:.4f}")
+            except KeyError:
+                logger.error(
+                    f"Node with hotkey '{node.hotkey}' not found in metagraph."
+                )
 
         uids = sorted(miner_scores.keys())
         weights = [miner_scores[uid] for uid in uids]
+
+        logger.info(f"Completed weight calculation for {len(uids)} nodes")
+        logger.debug(f"UIDs: {uids}")
+        logger.debug(f"Weights: {[f'{w:.4f}' for w in weights]}")
+
         return uids, weights
 
     async def set_weights(self, node_data: List[NodeData]) -> None:
