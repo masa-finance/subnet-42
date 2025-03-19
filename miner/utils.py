@@ -6,14 +6,15 @@ from fiber.encrypted.miner.endpoints.handshake import (
     exchange_symmetric_key,
 )
 from typing import TYPE_CHECKING
-import logging
+from fiber.logging_utils import get_logger
 from fiber.chain.chain_utils import query_substrate
 
 if TYPE_CHECKING:
     from neurons.miner import AgentMiner
 
+# Remove logging configuration to centralize it in the main entry point
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_validators_permits(miner: "AgentMiner"):
@@ -94,9 +95,9 @@ def healthcheck(miner: "AgentMiner"):
 
     logger.info("Performing miner healthcheck")
     logger.info(f"SS58 Address: {miner.keypair.ss58_address}")
-    # logger.info(f"UID: {miner.metagraph.nodes[miner.keypair.ss58_address].node_id}")
-    # logger.info(f"IP: {miner.metagraph.nodes[miner.keypair.ss58_address].ip}")
-    # logger.info(f"Port: {miner.metagraph.nodes[miner.keypair.ss58_address].port}")
+    # logger.info(f'UID: {miner.metagraph.nodes[miner.keypair.ss58_address].node_id}')
+    # logger.info(f'IP: {miner.metagraph.nodes[miner.keypair.ss58_address].ip}')
+    # logger.info(f'Port: {miner.metagraph.nodes[miner.keypair.ss58_address].port}')
     logger.info(f"Netuid: {miner.netuid}")
     logger.info(f"Subtensor Network: {miner.subtensor_network}")
     logger.info(f"Subtensor Address: {miner.subtensor_address}")

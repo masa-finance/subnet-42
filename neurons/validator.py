@@ -3,13 +3,14 @@ from dotenv import load_dotenv
 import os
 import asyncio
 import uvicorn
-from typing import Optional, Any, List
+from typing import Optional, Any
 
 from fiber.chain import chain_utils, interface
 from fiber.chain.metagraph import Metagraph
 from fiber.miner.server import factory_app
 from fiber.networking.models import NodeWithFernet as Node
 from fiber.logging_utils import get_logger
+
 
 from fastapi import FastAPI
 

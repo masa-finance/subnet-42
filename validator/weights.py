@@ -1,20 +1,22 @@
+import os
 from typing import List, Tuple
 import asyncio
 from fiber.chain import weights, interface
-from fiber.logging_utils import get_logger
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
+from fiber.logging_utils import get_logger
 
 from neurons import version_numerical
 
 from interfaces.types import NodeData
 
-logger = get_logger(__name__)
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
+
+logger = get_logger(__name__)
 
 
 class WeightsManager:
@@ -41,7 +43,7 @@ class WeightsManager:
 
         # Log node data for debugging
         for node in node_data:
-            logger.info(
+            logger.debug(
                 f"Node {node.hotkey} data:"
                 f"\n\tWeb success: {node.web_success}"
                 f"\n\tTwitter returned tweets: {node.twitter_returned_tweets}"
@@ -54,7 +56,7 @@ class WeightsManager:
                 f"\n\tLast operation time: {node.last_operation_time}"
                 f"\n\tCurrent time: {node.current_time}"
             )
-        logger.info("Starting weight calculation")
+        logger.info("Starting weight calculation...")
         miner_scores = {}
 
         if not node_data:
@@ -101,8 +103,8 @@ class WeightsManager:
         weights = [miner_scores[uid] for uid in uids]
 
         logger.info(f"Completed weight calculation for {len(uids)} nodes")
-        logger.debug(f"UIDs: {uids}")
-        logger.debug(f"Weights: {[f'{w:.4f}' for w in weights]}")
+        logger.info(f"UIDs: {uids}")
+        logger.info(f"Weights: {[f'{w:.4f}' for w in weights]}")
 
         return uids, weights
 
@@ -148,8 +150,6 @@ class WeightsManager:
 
         logger.debug("Calculating weights")
         uids, scores = self.calculate_weights(node_data)
-        logger.info(f"Calculated weights - UIDs: {uids}")
-        logger.info(f"Calculated scores: {scores}")
 
         for attempt in range(3):
             logger.info(f"Setting weights attempt {attempt + 1}/3")

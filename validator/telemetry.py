@@ -1,10 +1,11 @@
 import httpx
-import logging
+from fiber.logging_utils import get_logger
 import asyncio
+import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Remove logging configuration to centralize it in the main entry point
+
+logger = get_logger(__name__)
 
 
 class TEETelemetryClient:
@@ -73,21 +74,21 @@ class TEETelemetryClient:
         retries = 0
         while retries < max_retries:
             try:
-                logger.info("Generating telemetry job...")
+                logger.debug("Generating telemetry job...")
                 sig = await self.generate_telemetry_job()
-                logger.info(f"Generated job signature: {sig}")
+                logger.debug(f"Generated job signature: {sig}")
 
-                logger.info("Adding telemetry job...")
+                logger.debug("Adding telemetry job...")
                 job_uuid = await self.add_telemetry_job(sig)
-                logger.info(f"Added job with UUID: {job_uuid}")
+                logger.debug(f"Added job with UUID: {job_uuid}")
 
-                logger.info("Checking telemetry job status...")
+                logger.debug("Checking telemetry job status...")
                 status_sig = await self.check_telemetry_job(job_uuid)
-                logger.info(f"Job status signature: {status_sig}")
+                logger.debug(f"Job status signature: {status_sig}")
 
-                logger.info("Returning telemetry job result...")
+                logger.debug("Returning telemetry job result...")
                 result = await self.return_telemetry_job(sig, status_sig)
-                logger.info(f"Telemetry job result: {result}")
+                logger.debug(f"Telemetry job result: {result}")
 
                 return result
             except Exception as e:
@@ -95,7 +96,7 @@ class TEETelemetryClient:
                     f"Error in telemetry sequence: {self.tee_worker_address} {e}"
                 )
                 retries += 1
-                logger.info(
+                logger.debug(
                     f"Retrying... {self.tee_worker_address} ({retries}/{max_retries})"
                 )
                 await asyncio.sleep(delay)

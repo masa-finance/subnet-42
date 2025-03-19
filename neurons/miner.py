@@ -89,7 +89,7 @@ class AgentMiner:
 
     def post_ip_to_chain(self) -> None:
         """Posts the miner's IP and port to the chain if they have changed."""
-        logger.debug("Starting post_ip_to_chain process")
+        logger.info("Starting post_ip_to_chain process")
         try:
             node = self.node()
             logger.debug(f"Retrieved node from metagraph: {node}")
