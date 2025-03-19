@@ -1,7 +1,7 @@
 import asyncio
 from fiber.logging_utils import get_logger
+
 from typing import TYPE_CHECKING
-from validator.scorer import NodeDataScorer
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -38,7 +38,8 @@ class BackgroundTasks:
                 await self.validator.NATSPublisher.send_connected_nodes()
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
-                logger.error(f"Error in sync metagraph: {str(e)}")
+                logger.error(f"Error updating TEE 🚩: {str(e)}")
+                logger.debug(f"Error in updating tee: {str(e)}")
                 await asyncio.sleep(cadence_seconds / 2)  # Wait before retrying
 
     async def set_weights_loop(self, cadence_seconds) -> None:

@@ -1,5 +1,8 @@
 from db.routing_table_database import RoutingTableDatabase
 import sqlite3
+from fiber.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class RoutingTable:
@@ -83,3 +86,10 @@ class RoutingTable:
         except sqlite3.Error as e:
             print(f"Failed to retrieve addresses with hotkeys: {e}")
             return []
+
+    def clean_old_entries(self):
+        """Clean all entries where the timestamp is more than one hour older."""
+        try:
+            self.db.clean_old_entries()
+        except sqlite3.Error as e:
+            logger.info(f"Failed to clean old entries: {e}")

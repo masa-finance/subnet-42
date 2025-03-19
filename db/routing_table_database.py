@@ -58,3 +58,17 @@ class RoutingTableDatabase:
                 (hotkey, uid),
             )
             conn.commit()
+
+    def clean_old_entries(self):
+        """
+        Remove all entries where the timestamp is more than one hour older.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM miner_addresses 
+                WHERE timestamp < datetime('now', '-1 hour')
+                """
+            )
+            conn.commit()

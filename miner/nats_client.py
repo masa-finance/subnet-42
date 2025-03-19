@@ -1,4 +1,3 @@
-import asyncio
 import os
 import json
 from nats.aio.client import Client as NATS
@@ -12,48 +11,46 @@ class NatsClient:
         self.nc = NATS()
         logger.info("Initializing NATS client")
 
+    async def error_callback(self, ex):
+        logger.debug("Nats connecting error")
+
     async def send_connected_nodes(self, miners):
 
         # Connect to the NATS server
         nats_url = os.getenv("NATS_URL", None)
-        logger.info(f"Connecting to NATS server at {nats_url}")
+        logger.debug(f"Connecting to NATS server at {nats_url}")
 
         if nats_url:
-            await self.nc.connect(nats_url)
+            try:
+                await self.nc.connect(
+                    nats_url,
+                    error_cb=self.error_callback,
+                )
+            except Exception as e:
+                logger.info(f"An error ocurred when connecting to nats 🚩 {str(e)}")
+                logger.debug(
+                    f"Failed to connect to NATS server ( {nats_url} ) : {str(e)}"
+                )
+                return
 
             try:
                 nats_message = json.dumps({"Miners": miners})
                 channel_name = os.getenv("TEE_NATS_CHANNEL_NAME", "miners")
 
                 logger.info(
-                    f"Publishing message to channel '{channel_name}' with {len(miners)} miners"
+                    f"Publishing message to channel '{channel_name}' with "
+                    f"{len(miners)} miners"
                 )
-                logger.info(f"Message content: {nats_message}")
+                logger.debug(f"Message content: {nats_message}")
 
                 await self.nc.publish(channel_name, nats_message.encode())
-                logger.info("Successfully published message")
+                logger.info("Successfully published message ✅")
 
             except Exception as e:
-                logger.info(f"Error publishing message to NATS: {str(e)}")
-                raise
+                logger.info(f"Error publishing message to NATS ({nats_url})")
+                logger.debug(f"Error publishing message to NATS: {str(e)}")
+
             finally:
                 # Ensure the NATS connection is closed
-                logger.info("Closing NATS connection")
+                logger.debug("Closing NATS connection")
                 await self.nc.close()
-
-
-# Example usage
-async def main():
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
-    # Assuming you have an instance of AgentValidator
-    nats_client = NatsClient()
-    await nats_client.send_connected_nodes(["0.0.0.0:8080"])
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

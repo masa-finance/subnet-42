@@ -1,10 +1,11 @@
 import httpx
-import logging
+from fiber.logging_utils import get_logger
 import asyncio
+import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Remove logging configuration to centralize it in the main entry point
+
+logger = get_logger(__name__)
 
 
 class TEETelemetryClient:
@@ -12,7 +13,7 @@ class TEETelemetryClient:
         self.tee_worker_address = tee_worker_address
 
     async def generate_telemetry_job(self):
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
                 f"{self.tee_worker_address}/job/generate",
                 headers={"Content-Type": "application/json"},
@@ -30,7 +31,7 @@ class TEETelemetryClient:
             sig = sig[1:-1]
         sig = sig.replace("\\", "")
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
                 f"{self.tee_worker_address}/job/add",
                 headers={"Content-Type": "application/json"},
@@ -41,7 +42,7 @@ class TEETelemetryClient:
             return json_response.get("uid")
 
     async def check_telemetry_job(self, job_uuid):
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.get(
                 f"{self.tee_worker_address}/job/status/{job_uuid}"
             )
@@ -60,7 +61,7 @@ class TEETelemetryClient:
             sig = sig[1:-1]
         sig = sig.replace("\\", "")
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
                 f"{self.tee_worker_address}/job/result",
                 headers={"Content-Type": "application/json"},
@@ -73,27 +74,31 @@ class TEETelemetryClient:
         retries = 0
         while retries < max_retries:
             try:
-                logger.info("Generating telemetry job...")
+                logger.debug("Generating telemetry job...")
                 sig = await self.generate_telemetry_job()
-                logger.info(f"Generated job signature: {sig}")
+                logger.debug(f"Generated job signature: {sig}")
 
-                logger.info("Adding telemetry job...")
+                logger.debug("Adding telemetry job...")
                 job_uuid = await self.add_telemetry_job(sig)
-                logger.info(f"Added job with UUID: {job_uuid}")
+                logger.debug(f"Added job with UUID: {job_uuid}")
 
-                logger.info("Checking telemetry job status...")
+                logger.debug("Checking telemetry job status...")
                 status_sig = await self.check_telemetry_job(job_uuid)
-                logger.info(f"Job status signature: {status_sig}")
+                logger.debug(f"Job status signature: {status_sig}")
 
-                logger.info("Returning telemetry job result...")
+                logger.debug("Returning telemetry job result...")
                 result = await self.return_telemetry_job(sig, status_sig)
-                logger.info(f"Telemetry job result: {result}")
+                logger.debug(f"Telemetry job result: {result}")
 
                 return result
             except Exception as e:
-                logger.error(f"Error in telemetry sequence: {e}")
+                logger.error(
+                    f"Error in telemetry sequence: {self.tee_worker_address} {e}"
+                )
                 retries += 1
-                logger.info(f"Retrying... ({retries}/{max_retries})")
+                logger.debug(
+                    f"Retrying... {self.tee_worker_address} ({retries}/{max_retries})"
+                )
                 await asyncio.sleep(delay)
 
         logger.error("Max retries reached. Telemetry sequence failed.")

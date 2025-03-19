@@ -2,10 +2,10 @@ from typing import Dict, Optional
 from fiber.networking.models import NodeWithFernet as Node
 from fiber.encrypted.validator import handshake, client as vali_client
 from cryptography.fernet import Fernet
-from fiber.logging_utils import get_logger
 import os
 from typing import TYPE_CHECKING
 import sqlite3
+from fiber.logging_utils import get_logger
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -48,7 +48,7 @@ class NodeManager:
                 )
                 return False
 
-            logger.info(
+            logger.debug(
                 f"************* Handshake node data address: {miner_address}, "
                 f"symmetric_key_str: {symmetric_key_str}, "
                 f"symmetric_key_uuid: {symmetric_key_uuid}, "
@@ -71,11 +71,13 @@ class NodeManager:
                 fernet=Fernet(symmetric_key_str),
                 symmetric_key_uuid=symmetric_key_uuid,
             )
-            logger.info(f"Handshake successful with miner {miner_hotkey}")
+            logger.debug(f"Handshake successful with miner {miner_hotkey}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to connect to miner: {str(e)}")
+            logger.debug(
+                f"Failed to connect to miner {miner_address} - {miner_hotkey}: {str(e)}"
+            )
             return False
 
     async def get_tee_address(self, node: Node) -> Optional[str]:
@@ -120,11 +122,11 @@ class NodeManager:
                 )
 
                 if success:
-                    logger.info(
+                    logger.debug(
                         f"Connected to miner: {node.hotkey}, IP: {node.ip}, Port: {node.port}"
                     )
                 else:
-                    logger.warning(
+                    logger.debug(
                         f"Failed to connect to miner {node.hotkey} with address {server_address}"
                     )
 
@@ -149,29 +151,40 @@ class NodeManager:
     async def update_tee_list(self):
         logger.info("Starting TEE list update")
         routing_table = self.validator.routing_table
+
+        # cleaning old addresses
+        routing_table.clean_old_entries()
+
         for hotkey, _ in self.connected_nodes.items():
-            logger.info(f"Processing hotkey: {hotkey}")
+            logger.debug(f"Processing hotkey: {hotkey}")
             if hotkey in self.validator.metagraph.nodes:
                 node = self.validator.metagraph.nodes[hotkey]
-                logger.info(f"Found node in metagraph for hotkey: {hotkey}")
+                logger.debug(f"Found node in metagraph for hotkey: {hotkey}")
 
                 try:
                     tee_addresses = await self.get_tee_address(node)
-                    logger.info(
+                    logger.debug(
                         f"Retrieved TEE addresses for hotkey {hotkey}: {tee_addresses}"
                     )
 
                     # Cleaning DB from addresses under this hotkey
                     routing_table.clear_miner(hotkey=node.hotkey)
-                    logger.info(f"Cleared existing addresses for hotkey {hotkey}")
+                    logger.debug(f"Cleared existing addresses for hotkey {hotkey}")
 
                     if tee_addresses:
                         for tee_address in tee_addresses.split(","):
                             tee_address = tee_address.strip()
                             # Skip if localhost
                             if "localhost" in tee_address or "127.0.0.1" in tee_address:
-                                logger.info(
-                                    f"Skipping localhost TEE address {tee_address}"
+                                logger.debug(
+                                    f"Skipping localhost TEE address {tee_address} - {hotkey}"
+                                )
+                                continue
+
+                            # Skip if not https
+                            if not tee_address.startswith("https://"):
+                                logger.debug(
+                                    f"Skipping non-HTTPS TEE address {tee_address} - {hotkey}"
                                 )
                                 continue
 
@@ -179,21 +192,21 @@ class NodeManager:
                                 routing_table.add_miner_address(
                                     hotkey, node.node_id, tee_address
                                 )
-                                logger.info(
+                                logger.debug(
                                     f"Added TEE address {tee_address} for "
                                     f"hotkey {hotkey}"
                                 )
                             except sqlite3.IntegrityError:
-                                logger.warning(
+                                logger.debug(
                                     f"TEE address {tee_address} already exists in "
                                     f"routing table for hotkey {hotkey}"
                                 )
                     else:
-                        logger.warning(f"No TEE addresses returned for hotkey {hotkey}")
+                        logger.debug(f"No TEE addresses returned for hotkey {hotkey}")
                 except Exception as e:
                     logger.error(
                         f"Error processing TEE addresses for hotkey {hotkey}: {e}"
                     )
             else:
-                logger.info(f"Hotkey {hotkey} not found in metagraph")
-        logger.info("Completed TEE list update")
+                logger.debug(f"Hotkey {hotkey} not found in metagraph")
+        logger.info("Completed TEE list update ✅")

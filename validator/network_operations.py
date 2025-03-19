@@ -1,10 +1,11 @@
 import httpx
 from typing import Optional, Any
 from fiber.encrypted.validator import client as vali_client
-from fiber.logging_utils import get_logger
+import logging
+
 from fiber.networking.models import NodeWithFernet as Node
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def make_non_streamed_get(

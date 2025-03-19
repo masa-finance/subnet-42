@@ -1,8 +1,6 @@
-import os
 from miner.nats_client import NatsClient
 from typing import TYPE_CHECKING
 from fiber.logging_utils import get_logger
-from validator.telemetry import TEETelemetryClient
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -21,11 +19,11 @@ class MinersNATSPublisher:
         addresses = routing_table.get_all_addresses()
 
         if len(addresses) == 0:
-            logger.info("Skipping, no addresses found")
+            logger.debug("Skipping, no addresses found")
             return
 
-        logger.info(f"About to send {len(addresses)} to NATS")
+        logger.info(f"About to send {len(addresses)} IPs to NATS")
 
-        logger.info(f"Sending IP list: {addresses}")
+        logger.debug(f"Sending IP list: {addresses}")
 
         await self.nc.send_connected_nodes(addresses)
