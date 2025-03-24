@@ -85,7 +85,7 @@ class NodeManager:
         try:
             return await self.validator.make_non_streamed_get(node, endpoint)
         except Exception as e:
-            logger.error(f"Failed to get tee address: {str(e)}")
+            logger.error(f"Failed to get tee address: {node.hotkey} {str(e)}")
 
     async def connect_new_nodes(self) -> None:
         """

@@ -19,6 +19,70 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def apply_kurtosis(x):
+    if len(x) == 0 or np.all(x == 0):
+        return np.zeros_like(x)
+
+    # Center and scale the data
+    x_centered = (x - np.mean(x)) / (np.std(x) + 1e-8)
+
+    # Apply sigmoid with steeper curve for outliers
+    k = 2.0  # Controls steepness of curve
+    beta = 0.5  # Controls center point sensitivity
+
+    # Custom kurtosis-like function that rewards high performers
+    # but has diminishing returns
+    y = 1 / (1 + np.exp(-k * (x_centered - beta)))
+    y += 0.2 * np.tanh(x_centered)  # Add small boost for very high performers
+
+    # Normalize to [0,1] range
+    y = (y - np.min(y)) / (np.max(y) - np.min(y) + 1e-8)
+
+    return y
+
+
+def apply_kurtosis_custom(
+    x,
+    top_percentile=90,
+    reward_factor=0.4,
+    steepness=2.0,
+    center_sensitivity=0.5,
+    boost_factor=0.2,
+):
+    """
+    Apply custom kurtosis-like function with configurable parameters to weight the top performers more heavily.
+
+    Args:
+        x: Input array of values
+        top_percentile: Percentile threshold for increased weighting (e.g. 90 for top 10%)
+        reward_factor: Factor to increase weights for top performers (e.g. 0.4 for 40% boost)
+        steepness: Controls steepness of sigmoid curve (k parameter)
+        center_sensitivity: Controls center point sensitivity (beta parameter)
+        boost_factor: Factor for additional boost using tanh
+    """
+    if len(x) == 0 or np.all(x == 0):
+        return np.zeros_like(x)
+
+    # Center and scale the data
+    x_centered = (x - np.mean(x)) / (np.std(x) + 1e-8)
+
+    # Apply sigmoid with configurable steepness
+    y = 1 / (1 + np.exp(-steepness * (x_centered - center_sensitivity)))
+
+    # Add configurable boost for high performers
+    y += boost_factor * np.tanh(x_centered)
+
+    # Additional weighting for top percentile
+    threshold = np.percentile(x, top_percentile)
+    top_mask = x >= threshold
+    y[top_mask] *= 1 + reward_factor
+
+    # Normalize to [0,1] range
+    y = (y - np.min(y)) / (np.max(y) - np.min(y) + 1e-8)
+
+    return y
+
+
 class WeightsManager:
     def __init__(
         self,
@@ -150,30 +214,9 @@ class WeightsManager:
         # Normalize metrics using kurtosis curve
         logger.debug("Applying kurtosis curve to metrics")
 
-        def apply_kurtosis(x):
-            if len(x) == 0 or np.all(x == 0):
-                return np.zeros_like(x)
-
-            # Center and scale the data
-            x_centered = (x - np.mean(x)) / (np.std(x) + 1e-8)
-
-            # Apply sigmoid with steeper curve for outliers
-            k = 2.0  # Controls steepness of curve
-            beta = 0.5  # Controls center point sensitivity
-
-            # Custom kurtosis-like function that rewards high performers
-            # but has diminishing returns
-            y = 1 / (1 + np.exp(-k * (x_centered - beta)))
-            y += 0.2 * np.tanh(x_centered)  # Add small boost for very high performers
-
-            # Normalize to [0,1] range
-            y = (y - np.min(y)) / (np.max(y) - np.min(y) + 1e-8)
-
-            return y
-
-        web_successes = apply_kurtosis(web_successes)
-        tweets = apply_kurtosis(tweets)
-        profiles = apply_kurtosis(profiles)
+        web_successes = apply_kurtosis_custom(web_successes)
+        tweets = apply_kurtosis_custom(tweets)
+        profiles = apply_kurtosis_custom(profiles)
 
         # Calculate combined score
         logger.debug("Calculating combined scores for each node")
