@@ -31,30 +31,23 @@ class WeightsManager:
         """
         self.validator = validator
 
-    def calculate_weights(self) -> Tuple[List[int], List[float]]:
+    def _get_delta_node_data(self) -> List[NodeData]:
         """
-        Calculate weights for nodes based on their web_success, twitter_returned_tweets, and twitter_returned_profiles.
+        Get telemetry data and calculate deltas between latest and oldest records.
 
-        :param node_data: List of NodeData objects containing node information.
-        :return: A tuple containing a list of node IDs and their corresponding weights.
+        :return: List of NodeData objects containing delta values.
         """
-
+        delta_node_data = []
         hotkeys_to_score = (
             self.validator.telemetry_storage.get_all_hotkeys_with_telemetry()
         )
+
         for hotkey in hotkeys_to_score:
             node_telemetry = self.validator.telemetry_storage.get_telemetry_by_hotkey(
                 hotkey
             )
             logger.info(f"Showing {hotkey} telemetry: {len(node_telemetry)} records")
             logger.info(node_telemetry)
-
-        # Calculate deltas for each hotkey's telemetry metrics
-        delta_node_data = []
-        for hotkey in hotkeys_to_score:
-            node_telemetry = self.validator.telemetry_storage.get_telemetry_by_hotkey(
-                hotkey
-            )
 
             if len(node_telemetry) >= 2:
                 # Sort by timestamp descending to get latest entries
@@ -70,21 +63,29 @@ class WeightsManager:
                     uid=latest.uid,
                     timestamp=latest.timestamp,
                     boot_time=latest.boot_time - oldest.boot_time,
-                    last_operation_time=latest.last_operation_time
-                    - oldest.last_operation_time,
+                    last_operation_time=(
+                        latest.last_operation_time - oldest.last_operation_time
+                    ),
                     current_time=latest.current_time - oldest.current_time,
-                    twitter_auth_errors=latest.twitter_auth_errors
-                    - oldest.twitter_auth_errors,
-                    twitter_errors=latest.twitter_errors - oldest.twitter_errors,
-                    twitter_ratelimit_errors=latest.twitter_ratelimit_errors
-                    - oldest.twitter_ratelimit_errors,
-                    twitter_returned_other=latest.twitter_returned_other
-                    - oldest.twitter_returned_other,
-                    twitter_returned_profiles=latest.twitter_returned_profiles
-                    - oldest.twitter_returned_profiles,
-                    twitter_returned_tweets=latest.twitter_returned_tweets
-                    - oldest.twitter_returned_tweets,
-                    twitter_scrapes=latest.twitter_scrapes - oldest.twitter_scrapes,
+                    twitter_auth_errors=(
+                        latest.twitter_auth_errors - oldest.twitter_auth_errors
+                    ),
+                    twitter_errors=(latest.twitter_errors - oldest.twitter_errors),
+                    twitter_ratelimit_errors=(
+                        latest.twitter_ratelimit_errors
+                        - oldest.twitter_ratelimit_errors
+                    ),
+                    twitter_returned_other=(
+                        latest.twitter_returned_other - oldest.twitter_returned_other
+                    ),
+                    twitter_returned_profiles=(
+                        latest.twitter_returned_profiles
+                        - oldest.twitter_returned_profiles
+                    ),
+                    twitter_returned_tweets=(
+                        latest.twitter_returned_tweets - oldest.twitter_returned_tweets
+                    ),
+                    twitter_scrapes=(latest.twitter_scrapes - oldest.twitter_scrapes),
                     web_errors=latest.web_errors - oldest.web_errors,
                     web_success=latest.web_success - oldest.web_success,
                 )
@@ -97,22 +98,36 @@ class WeightsManager:
                 )
 
         logger.info(f"Calculated deltas for {len(delta_node_data)} nodes")
+        return delta_node_data
 
+    def calculate_weights(
+        self, delta_node_data: List[NodeData], simulation: bool = False
+    ) -> Tuple[List[int], List[float]]:
+        """
+        Calculate weights for nodes based on their web_success, twitter_returned_tweets,
+        and twitter_returned_profiles using a kurtosis curve.
+
+        :param delta_node_data: List of NodeData objects with delta values
+        :return: A tuple containing a list of node IDs and their corresponding weights.
+        """
         # Log node data for debugging
         for node in delta_node_data:
             logger.debug(
                 f"Node {node.hotkey} data:"
                 f"\n\tWeb success: {node.web_success}"
                 f"\n\tTwitter returned tweets: {node.twitter_returned_tweets}"
-                f"\n\tTwitter returned profiles: {node.twitter_returned_profiles}"
+                f"\n\tTwitter returned profiles: "
+                f"{node.twitter_returned_profiles}"
                 f"\n\tTwitter errors: {node.twitter_errors}"
                 f"\n\tTwitter auth errors: {node.twitter_auth_errors}"
-                f"\n\tTwitter ratelimit errors: {node.twitter_ratelimit_errors}"
+                f"\n\tTwitter ratelimit errors: "
+                f"{node.twitter_ratelimit_errors}"
                 f"\n\tWeb errors: {node.web_errors}"
                 f"\n\tBoot time: {node.boot_time}"
                 f"\n\tLast operation time: {node.last_operation_time}"
                 f"\n\tCurrent time: {node.current_time}"
             )
+
         logger.info("Starting weight calculation...")
         miner_scores = {}
 
@@ -124,31 +139,56 @@ class WeightsManager:
 
         # Extract metrics
         logger.debug("Extracting node metrics")
-        web_successes = np.array(
-            [node.web_success for node in delta_node_data]
-        ).reshape(-1, 1)
+        web_successes = np.array([float(node.web_success) for node in delta_node_data])
         tweets = np.array(
-            [node.twitter_returned_tweets for node in delta_node_data]
-        ).reshape(-1, 1)
+            [float(node.twitter_returned_tweets) for node in delta_node_data]
+        )
         profiles = np.array(
-            [node.twitter_returned_profiles for node in delta_node_data]
-        ).reshape(-1, 1)
+            [float(node.twitter_returned_profiles) for node in delta_node_data]
+        )
 
-        # Normalize metrics
-        logger.debug("Normalizing metrics using MinMaxScaler")
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        web_successes = scaler.fit_transform(web_successes).flatten()
-        tweets = scaler.fit_transform(tweets).flatten()
-        profiles = scaler.fit_transform(profiles).flatten()
+        # Normalize metrics using kurtosis curve
+        logger.debug("Applying kurtosis curve to metrics")
+
+        def apply_kurtosis(x):
+            if len(x) == 0 or np.all(x == 0):
+                return np.zeros_like(x)
+
+            # Center and scale the data
+            x_centered = (x - np.mean(x)) / (np.std(x) + 1e-8)
+
+            # Apply sigmoid with steeper curve for outliers
+            k = 2.0  # Controls steepness of curve
+            beta = 0.5  # Controls center point sensitivity
+
+            # Custom kurtosis-like function that rewards high performers
+            # but has diminishing returns
+            y = 1 / (1 + np.exp(-k * (x_centered - beta)))
+            y += 0.2 * np.tanh(x_centered)  # Add small boost for very high performers
+
+            # Normalize to [0,1] range
+            y = (y - np.min(y)) / (np.max(y) - np.min(y) + 1e-8)
+
+            return y
+
+        web_successes = apply_kurtosis(web_successes)
+        tweets = apply_kurtosis(tweets)
+        profiles = apply_kurtosis(profiles)
 
         # Calculate combined score
         logger.debug("Calculating combined scores for each node")
         for idx, node in enumerate(delta_node_data):
             try:
-                uid = self.validator.metagraph.nodes[node.hotkey].node_id
+                if simulation:
+                    uid = node.uid
+                else:
+                    uid = self.validator.metagraph.nodes[node.hotkey].node_id
+
                 if uid is not None:
                     # Combine scores with equal weight
-                    score = (web_successes[idx] + tweets[idx] + profiles[idx]) / 3
+                    score = float(
+                        (web_successes[idx] + tweets[idx] + profiles[idx]) / 3
+                    )
                     miner_scores[uid] = score
                     logger.debug(f"Node {node.hotkey} (UID {uid}) score: {score:.4f}")
             except KeyError:
@@ -157,7 +197,7 @@ class WeightsManager:
                 )
 
         uids = sorted(miner_scores.keys())
-        weights = [miner_scores[uid] for uid in uids]
+        weights = [float(miner_scores[uid]) for uid in uids]
 
         logger.info(f"Completed weight calculation for {len(uids)} nodes")
         logger.info(f"UIDs: {uids}")
@@ -204,7 +244,8 @@ class WeightsManager:
             logger.info("Wait period complete")
 
         logger.debug("Calculating weights")
-        uids, scores = self.calculate_weights()
+        data_to_score = self._get_delta_node_data()
+        uids, scores = self.calculate_weights(data_to_score)
 
         for attempt in range(3):
             logger.info(f"Setting weights attempt {attempt + 1}/3")
