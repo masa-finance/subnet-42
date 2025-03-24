@@ -53,83 +53,55 @@ class NodeDataScorer:
                     logger.debug(
                         f"Node {hotkey} telemetry successful: {telemetry_result}"
                     )
-                    node_data.append(
-                        NodeData(
-                            hotkey=hotkey,
-                            boot_time=telemetry_result.get("boot_time", 0),
-                            last_operation_time=telemetry_result.get(
-                                "last_operation_time", 0
-                            ),
-                            current_time=telemetry_result.get("current_time", 0),
-                            twitter_auth_errors=telemetry_result.get("stats", {}).get(
-                                "twitter_auth_errors", 0
-                            ),
-                            twitter_errors=telemetry_result.get("stats", {}).get(
-                                "twitter_errors", 0
-                            ),
-                            twitter_ratelimit_errors=telemetry_result.get(
-                                "stats", {}
-                            ).get("twitter_ratelimit_errors", 0),
-                            twitter_returned_other=telemetry_result.get(
-                                "stats", {}
-                            ).get("twitter_returned_other", 0),
-                            twitter_returned_profiles=telemetry_result.get(
-                                "stats", {}
-                            ).get("twitter_returned_profiles", 0),
-                            twitter_returned_tweets=telemetry_result.get(
-                                "stats", {}
-                            ).get("twitter_returned_tweets", 0),
-                            twitter_scrapes=telemetry_result.get("stats", {}).get(
-                                "twitter_scrapes", 0
-                            ),
-                            web_errors=telemetry_result.get("stats", {}).get(
-                                "web_errors", 0
-                            ),
-                            web_success=telemetry_result.get("stats", {}).get(
-                                "web_success", 0
-                            ),
-                        )
+                    uid = self.validator.metagraph.nodes[hotkey].node_id
+                    telemetry_data = NodeData(
+                        hotkey=hotkey,
+                        uid=uid,
+                        timestamp="",
+                        boot_time=telemetry_result.get("boot_time", 0),
+                        last_operation_time=telemetry_result.get(
+                            "last_operation_time", 0
+                        ),
+                        current_time=telemetry_result.get("current_time", 0),
+                        twitter_auth_errors=telemetry_result.get("stats", {}).get(
+                            "twitter_auth_errors", 0
+                        ),
+                        twitter_errors=telemetry_result.get("stats", {}).get(
+                            "twitter_errors", 0
+                        ),
+                        twitter_ratelimit_errors=telemetry_result.get("stats", {}).get(
+                            "twitter_ratelimit_errors", 0
+                        ),
+                        twitter_returned_other=telemetry_result.get("stats", {}).get(
+                            "twitter_returned_other", 0
+                        ),
+                        twitter_returned_profiles=telemetry_result.get("stats", {}).get(
+                            "twitter_returned_profiles", 0
+                        ),
+                        twitter_returned_tweets=telemetry_result.get("stats", {}).get(
+                            "twitter_returned_tweets", 0
+                        ),
+                        twitter_scrapes=telemetry_result.get("stats", {}).get(
+                            "twitter_scrapes", 0
+                        ),
+                        web_errors=telemetry_result.get("stats", {}).get(
+                            "web_errors", 0
+                        ),
+                        web_success=telemetry_result.get("stats", {}).get(
+                            "web_success", 0
+                        ),
                     )
-                else:
-                    logger.warning(f"Node {hotkey} telemetry returned no results")
-                    node_data.append(
-                        NodeData(
-                            hotkey=hotkey,
-                            boot_time=0,
-                            last_operation_time=0,
-                            current_time=0,
-                            twitter_auth_errors=0,
-                            twitter_errors=0,
-                            twitter_ratelimit_errors=0,
-                            twitter_returned_other=0,
-                            twitter_returned_profiles=0,
-                            twitter_returned_tweets=0,
-                            twitter_scrapes=0,
-                            web_errors=0,
-                            web_success=0,
-                        )
-                    )
+                    logger.info("Storing telemetry")
+                    logger.info(f"telemetry for {hotkey}: {telemetry_data}")
+                    self.validator.telemetry_storage.add_telemetry(telemetry_data)
+                    node_data.append(telemetry_data)
+
+            # Should add empty telemetry if a node isnt replying?
+
             except Exception as e:
-                logger.debug(
+                logger.error(
                     f"Failed to get telemetry for node {hotkey}: {str(e)}",
                     exc_info=True,
-                )
-                node_data.append(
-                    NodeData(
-                        hotkey=hotkey,
-                        boot_time=0,
-                        last_operation_time=0,
-                        current_time=0,
-                        twitter_auth_errors=0,
-                        twitter_errors=0,
-                        twitter_ratelimit_errors=0,
-                        twitter_returned_other=0,
-                        twitter_returned_profiles=0,
-                        twitter_returned_tweets=0,
-                        twitter_scrapes=0,
-                        web_errors=0,
-                        web_success=0,
-                    )
                 )
 
         logger.info(f"Completed telemetry fetching for {len(node_data)} nodes")

@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from validator.config import Config
 from validator.http_client import HttpClientManager
 from validator.background_tasks import BackgroundTasks
-from validator.api_routes import register_routes
+from validator.api_routes import ValidatorAPI
 from validator.network_operations import (
     make_non_streamed_get,
     make_non_streamed_post,
@@ -27,6 +27,8 @@ from validator.node_manager import NodeManager
 from validator.nats import MinersNATSPublisher
 from validator.weights import WeightsManager
 from validator.scorer import NodeDataScorer
+
+from validator.telemetry_storage import TelemetryStorage
 
 from validator.routing_table import RoutingTable
 
@@ -72,29 +74,27 @@ class Validator:
         self.metagraph.sync_nodes()
 
         self.node_manager = NodeManager(validator=self)
+        self.telemetry_storage = TelemetryStorage()
         self.scorer = NodeDataScorer(validator=self)
         self.weights_manager = WeightsManager(validator=self)
         self.background_tasks = BackgroundTasks(validator=self)
         self.metagraph_manager = MetagraphManager(validator=self)
-        self.NATSPublisher = MinersNATSPublisher(
-            validator=self
-        )  # Not used yet (Depends on Nats on TEE side)
+        self.NATSPublisher = MinersNATSPublisher(validator=self)
+
+        self.routes = ValidatorAPI(validator=self)
 
     async def start(self) -> None:
         """Start the validator service"""
         try:
             await self.http_client_manager.start()
             self.app = factory_app(debug=False)
-            register_routes(self.app, self.healthcheck)
 
             # Start background tasks
 
             asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
             )
-            asyncio.create_task(
-                self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
-            )
+            asyncio.create_task(self.background_tasks.set_weights_loop(60))
 
             asyncio.create_task(
                 self.background_tasks.update_tee(
@@ -102,14 +102,21 @@ class Validator:
                 )
             )
 
+        except Exception as e:
+            logger.error(f"Failed to start validator: {str(e)}")
+            raise
+
+        try:
             config = uvicorn.Config(
-                self.app, host="0.0.0.0", port=self.config.VALIDATOR_PORT, lifespan="on"
+                self.routes.app,
+                host="0.0.0.0",
+                port=self.config.VALIDATOR_PORT,
+                lifespan="on",
             )
             server = uvicorn.Server(config)
             await server.serve()
-
         except Exception as e:
-            logger.error(f"Failed to start validator: {str(e)}")
+            logger.error(f"Failed to start validator api: {str(e)}")
             raise
 
     def node(self) -> Optional[Node]:
@@ -153,6 +160,9 @@ class Validator:
         await self.http_client_manager.stop()
         if self.server:
             await self.server.stop()
+
+    def connected_nodes(self):
+        return self.routing_table.get_all_addresses()
 
     def healthcheck(self):
         try:

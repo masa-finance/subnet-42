@@ -1,3 +1,4 @@
+import os
 import asyncio
 from fiber.logging_utils import get_logger
 
@@ -7,6 +8,8 @@ if TYPE_CHECKING:
     from neurons.validator import Validator
 
 logger = get_logger(__name__)
+
+TELEMETRY_EXPIRATION_HOURS = int(os.getenv("TELEMETRY_EXPIRATION_HOURS", "8"))
 
 
 class BackgroundTasks:
@@ -36,6 +39,10 @@ class BackgroundTasks:
         while True:
             try:
                 await self.validator.NATSPublisher.send_connected_nodes()
+                self.validator.telemetry_storage.clean_old_entries(
+                    TELEMETRY_EXPIRATION_HOURS
+                )
+                await self.scorer.get_node_data()
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
                 logger.error(f"Error updating TEE 🚩: {str(e)}")
@@ -47,8 +54,7 @@ class BackgroundTasks:
         while True:
             try:
                 # TODO: Calculate scores and set weights
-                node_data = await self.scorer.get_node_data()
-                await self.validator.weights_manager.set_weights(node_data)
+                await self.validator.weights_manager.set_weights()
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
                 logger.error(f"Error in setting weights: {str(e)}")

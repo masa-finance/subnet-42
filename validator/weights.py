@@ -31,9 +31,7 @@ class WeightsManager:
         """
         self.validator = validator
 
-    def calculate_weights(
-        self, node_data: List[NodeData]
-    ) -> Tuple[List[int], List[float]]:
+    def calculate_weights(self) -> Tuple[List[int], List[float]]:
         """
         Calculate weights for nodes based on their web_success, twitter_returned_tweets, and twitter_returned_profiles.
 
@@ -41,8 +39,67 @@ class WeightsManager:
         :return: A tuple containing a list of node IDs and their corresponding weights.
         """
 
+        hotkeys_to_score = (
+            self.validator.telemetry_storage.get_all_hotkeys_with_telemetry()
+        )
+        for hotkey in hotkeys_to_score:
+            node_telemetry = self.validator.telemetry_storage.get_telemetry_by_hotkey(
+                hotkey
+            )
+            logger.info(f"Showing {hotkey} telemetry: {len(node_telemetry)} records")
+            logger.info(node_telemetry)
+
+        # Calculate deltas for each hotkey's telemetry metrics
+        delta_node_data = []
+        for hotkey in hotkeys_to_score:
+            node_telemetry = self.validator.telemetry_storage.get_telemetry_by_hotkey(
+                hotkey
+            )
+
+            if len(node_telemetry) >= 2:
+                # Sort by timestamp descending to get latest entries
+                sorted_telemetry = sorted(
+                    node_telemetry, key=lambda x: x.timestamp, reverse=True
+                )
+                latest = sorted_telemetry[0]
+                oldest = sorted_telemetry[-1]
+
+                # Calculate deltas between latest and oldest values
+                delta_data = NodeData(
+                    hotkey=hotkey,
+                    uid=latest.uid,
+                    timestamp=latest.timestamp,
+                    boot_time=latest.boot_time - oldest.boot_time,
+                    last_operation_time=latest.last_operation_time
+                    - oldest.last_operation_time,
+                    current_time=latest.current_time - oldest.current_time,
+                    twitter_auth_errors=latest.twitter_auth_errors
+                    - oldest.twitter_auth_errors,
+                    twitter_errors=latest.twitter_errors - oldest.twitter_errors,
+                    twitter_ratelimit_errors=latest.twitter_ratelimit_errors
+                    - oldest.twitter_ratelimit_errors,
+                    twitter_returned_other=latest.twitter_returned_other
+                    - oldest.twitter_returned_other,
+                    twitter_returned_profiles=latest.twitter_returned_profiles
+                    - oldest.twitter_returned_profiles,
+                    twitter_returned_tweets=latest.twitter_returned_tweets
+                    - oldest.twitter_returned_tweets,
+                    twitter_scrapes=latest.twitter_scrapes - oldest.twitter_scrapes,
+                    web_errors=latest.web_errors - oldest.web_errors,
+                    web_success=latest.web_success - oldest.web_success,
+                )
+
+                delta_node_data.append(delta_data)
+                logger.debug(f"Calculated deltas for {hotkey}: {delta_data}")
+            else:
+                logger.debug(
+                    f"Not enough telemetry data for {hotkey} to calculate deltas"
+                )
+
+        logger.info(f"Calculated deltas for {len(delta_node_data)} nodes")
+
         # Log node data for debugging
-        for node in node_data:
+        for node in delta_node_data:
             logger.debug(
                 f"Node {node.hotkey} data:"
                 f"\n\tWeb success: {node.web_success}"
@@ -59,22 +116,22 @@ class WeightsManager:
         logger.info("Starting weight calculation...")
         miner_scores = {}
 
-        if not node_data:
+        if not delta_node_data:
             logger.warning("No node data provided for weight calculation")
             return [], []
 
-        logger.debug(f"Calculating weights for {len(node_data)} nodes")
+        logger.debug(f"Calculating weights for {len(delta_node_data)} nodes")
 
         # Extract metrics
         logger.debug("Extracting node metrics")
-        web_successes = np.array([node.web_success for node in node_data]).reshape(
-            -1, 1
-        )
-        tweets = np.array([node.twitter_returned_tweets for node in node_data]).reshape(
-            -1, 1
-        )
+        web_successes = np.array(
+            [node.web_success for node in delta_node_data]
+        ).reshape(-1, 1)
+        tweets = np.array(
+            [node.twitter_returned_tweets for node in delta_node_data]
+        ).reshape(-1, 1)
         profiles = np.array(
-            [node.twitter_returned_profiles for node in node_data]
+            [node.twitter_returned_profiles for node in delta_node_data]
         ).reshape(-1, 1)
 
         # Normalize metrics
@@ -86,7 +143,7 @@ class WeightsManager:
 
         # Calculate combined score
         logger.debug("Calculating combined scores for each node")
-        for idx, node in enumerate(node_data):
+        for idx, node in enumerate(delta_node_data):
             try:
                 uid = self.validator.metagraph.nodes[node.hotkey].node_id
                 if uid is not None:
@@ -108,7 +165,7 @@ class WeightsManager:
 
         return uids, weights
 
-    async def set_weights(self, node_data: List[NodeData]) -> None:
+    async def set_weights(self) -> None:
         """
         Set weights for nodes on the blockchain, ensuring the minimum interval between updates is respected.
 
@@ -122,12 +179,10 @@ class WeightsManager:
         )
 
         logger.debug("Getting validator node ID")
-        # validator_node_id = self.validator.substrate.query(
-        #     "SubtensorModule",
-        #     "Uids",
-        #     [self.validator.netuid, self.validator.keypair.ss58_address],
-        # ).value
-        validator_node_id = 95
+        validator_node_id = self.validator.metagraph.nodes[
+            self.validator.keypair.ss58_address
+        ].node_id
+
         logger.debug(f"Validator node ID: {validator_node_id}")
 
         logger.debug("Checking blocks since last update")
@@ -149,7 +204,7 @@ class WeightsManager:
             logger.info("Wait period complete")
 
         logger.debug("Calculating weights")
-        uids, scores = self.calculate_weights(node_data)
+        uids, scores = self.calculate_weights()
 
         for attempt in range(3):
             logger.info(f"Setting weights attempt {attempt + 1}/3")
@@ -167,6 +222,8 @@ class WeightsManager:
                 )
 
                 if success:
+                    logger.info(f"UIDS: {uids}")
+                    logger.info(f"Scores: {scores}")
                     logger.info("✅ Successfully set weights!")
                     return
                 else:
