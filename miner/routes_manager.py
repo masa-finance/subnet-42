@@ -83,16 +83,33 @@ class MinerAPI:
                 f"====================================\n"
                 f"       RECEIVED SCORE REPORT        \n"
                 f"====================================\033[0m\n\n"
-                f"  Validator: {payload['uid']}\n"
-                f"  Hotkey: {payload['hotkey']}\n"
+                f"  Validator UID: {payload['uid']}\n"
+                f"  Validator Hotkey: {payload['hotkey']}\n"
                 f"  Score: \033[33m{payload['score']:.4f}\033[0m\n"
             )
+
+            telemetry = payload["telemetry"]
+            formatted_telemetry = (
+                f"  Web Success: {telemetry.get('web_success', 'N/A')}\n"
+                f"  Twitter Stats:\n"
+                f"    - Returned Tweets: {telemetry.get('twitter_returned_tweets', 'N/A')}\n"
+                f"    - Returned Profiles: {telemetry.get('twitter_returned_profiles', 'N/A')}\n"
+                f"    - Errors: {telemetry.get('twitter_errors', 'N/A')}\n"
+                f"    - Auth Errors: {telemetry.get('twitter_auth_errors', 'N/A')}\n"
+                f"    - Rate Limit Errors: {telemetry.get('twitter_ratelimit_errors', 'N/A')}\n"
+                f"  Web Errors: {telemetry.get('web_errors', 'N/A')}\n"
+                f"  Timing:\n"
+                f"    - Boot Time: {telemetry.get('boot_time', 'N/A')}\n"
+                f"    - Last Operation: {telemetry.get('last_operation_time', 'N/A')}\n"
+                f"    - Current Time: {telemetry.get('current_time', 'N/A')}\n"
+            )
+
             logger.info(
                 f"\n\033[32m"
                 f"====================================\n"
                 f"    TELEMETRY METRICS FOR PERIOD    \n"
                 f"====================================\033[0m\n\n"
-                f"  {payload['telemetry']}\n"
+                f"{formatted_telemetry}"
             )
             return {"status": "success"}
         except Exception as e:
