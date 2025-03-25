@@ -4,6 +4,7 @@ from miner.utils import (
     get_public_key,
     exchange_symmetric_key,
 )
+from fiber.logging_utils import get_logger
 
 import os
 from starlette.requests import Request
@@ -14,6 +15,8 @@ import httpx
 
 tee_address = os.getenv("MINER_TEE_ADDRESS")
 client = httpx.AsyncClient(base_url=tee_address)
+
+logger = get_logger(__name__)
 
 
 class MinerAPI:
@@ -64,6 +67,26 @@ class MinerAPI:
             methods=["GET", "POST", "PUT", "DELETE"],
             tags=["proxy"],
         )
+
+        self.app.add_api_route(
+            "/score-report",
+            self.score_report_handler,
+            methods=["POST"],
+            tags=["scoring"],
+        )
+
+    async def score_report_handler(self, request: Request):
+        try:
+            payload = await request.json()
+            logger.info(
+                f"Received score report from validator {payload['uid']} "
+                f"hotkey: {payload['hotkey']}, Score: {payload['score']}"
+            )
+            logger.info(f"Telemetry data in the past timerange: {payload['telemetry']}")
+            return {"status": "success"}
+        except Exception as e:
+            logger.error(f"Error processing score report: {str(e)}")
+            return {"status": "error", "message": str(e)}
 
     async def healthcheck(self, request: Request):
         return healthcheck(self.miner)

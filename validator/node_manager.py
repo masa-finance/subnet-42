@@ -6,6 +6,7 @@ import os
 from typing import TYPE_CHECKING
 import sqlite3
 from fiber.logging_utils import get_logger
+from interfaces.types import NodeData
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -122,11 +123,11 @@ class NodeManager:
                 )
 
                 if success:
-                    logger.debug(
+                    logger.info(
                         f"Connected to miner: {node.hotkey}, IP: {node.ip}, Port: {node.port}"
                     )
                 else:
-                    logger.debug(
+                    logger.info(
                         f"Failed to connect to miner {node.hotkey} with address {server_address}"
                     )
 
@@ -210,3 +211,46 @@ class NodeManager:
             else:
                 logger.debug(f"Hotkey {hotkey} not found in metagraph")
         logger.info("Completed TEE list update ✅")
+
+    async def send_score_report(
+        self, node_hotkey: str, score: float, telemetry: NodeData
+    ) -> None:
+        """
+        Send a score report to a specific miner.
+
+        Args:
+            hotkey (str): The miner's hotkey
+            score (float): The calculated score for the miner
+            telemetry (dict): The telemetry data for the miner
+        """
+        try:
+            if node_hotkey not in self.connected_nodes:
+                logger.warning(f"No connected node found for hotkey {node_hotkey}")
+                return
+
+            node = self.connected_nodes[node_hotkey]
+            validator_node_id = self.validator.metagraph.nodes[
+                self.validator.keypair.ss58_address
+            ].node_id
+
+            payload = {
+                "telemetry": telemetry,
+                "score": score,
+                "hotkey": self.validator.keypair.ss58_address,
+                "uid": validator_node_id,
+            }
+
+            response = await self.validator.http_client_manager.client.post(
+                f"{node.address}/score-report", json=payload
+            )
+
+            if response.status_code == 200:
+                logger.debug(f"Successfully sent score report to miner {node_hotkey}")
+            else:
+                logger.warning(
+                    f"Failed to send score report to miner {node_hotkey}. "
+                    f"Status code: {response.status_code}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error sending score report to miner {node_hotkey}: {str(e)}")

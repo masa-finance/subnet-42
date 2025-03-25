@@ -111,7 +111,7 @@ class WeightsManager:
                 hotkey
             )
             logger.info(f"Showing {hotkey} telemetry: {len(node_telemetry)} records")
-            logger.info(node_telemetry)
+            logger.debug(node_telemetry)
 
             if len(node_telemetry) >= 2:
                 # Sort by timestamp descending to get latest entries
@@ -164,7 +164,7 @@ class WeightsManager:
         logger.info(f"Calculated deltas for {len(delta_node_data)} nodes")
         return delta_node_data
 
-    def calculate_weights(
+    async def calculate_weights(
         self, delta_node_data: List[NodeData], simulation: bool = False
     ) -> Tuple[List[int], List[float]]:
         """
@@ -233,6 +233,10 @@ class WeightsManager:
                         (web_successes[idx] + tweets[idx] + profiles[idx]) / 3
                     )
                     miner_scores[uid] = score
+
+                    await self.validator.node_manager.send_score_report(
+                        node.hotkey, score, node
+                    )
                     logger.debug(f"Node {node.hotkey} (UID {uid}) score: {score:.4f}")
             except KeyError:
                 logger.error(
@@ -244,6 +248,8 @@ class WeightsManager:
 
         logger.info(f"Completed weight calculation for {len(uids)} nodes")
         logger.info(f"UIDs: {uids}")
+        logger.info(f"weights: {weights}")
+
         logger.info(f"Weights: {[f'{w:.4f}' for w in weights]}")
 
         return uids, weights
@@ -288,7 +294,7 @@ class WeightsManager:
 
         logger.debug("Calculating weights")
         data_to_score = self._get_delta_node_data()
-        uids, scores = self.calculate_weights(data_to_score)
+        uids, scores = await self.calculate_weights(data_to_score)
 
         for attempt in range(3):
             logger.info(f"Setting weights attempt {attempt + 1}/3")
