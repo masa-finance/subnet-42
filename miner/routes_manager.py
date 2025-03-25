@@ -79,13 +79,18 @@ class MinerAPI:
         try:
             payload = await request.json()
             logger.info(
-                f"Received score report from validator {payload['uid']} "
-                f"hotkey: {payload['hotkey']}, Score: {payload['score']}"
+                f"\033[32mReceived score report:\033[0m\n"
+                f"  Validator: {payload['uid']}\n"
+                f"  Hotkey: {payload['hotkey']}\n"
+                f"  Score: {payload['score']:.4f}"
             )
-            logger.info(f"Telemetry data in the past timerange: {payload['telemetry']}")
+            logger.info(
+                f"\033[32mTelemetry metrics for scoring period:\033[0m\n"
+                f"  {payload['telemetry']}"
+            )
             return {"status": "success"}
         except Exception as e:
-            logger.error(f"Error processing score report: {str(e)}")
+            logger.error(f"\033[31mError processing score report: {str(e)}\033[0m")
             return {"status": "error", "message": str(e)}
 
     async def healthcheck(self, request: Request):

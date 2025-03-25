@@ -234,14 +234,25 @@ class NodeManager:
             ].node_id
 
             payload = {
-                "telemetry": telemetry,
+                "telemetry": {
+                    "web_success": telemetry.web_success,
+                    "twitter_returned_tweets": telemetry.twitter_returned_tweets,
+                    "twitter_returned_profiles": telemetry.twitter_returned_profiles,
+                    "twitter_errors": telemetry.twitter_errors,
+                    "twitter_auth_errors": telemetry.twitter_auth_errors,
+                    "twitter_ratelimit_errors": telemetry.twitter_ratelimit_errors,
+                    "web_errors": telemetry.web_errors,
+                    "boot_time": telemetry.boot_time,
+                    "last_operation_time": telemetry.last_operation_time,
+                    "current_time": telemetry.current_time,
+                },
                 "score": score,
                 "hotkey": self.validator.keypair.ss58_address,
                 "uid": validator_node_id,
             }
 
             response = await self.validator.http_client_manager.client.post(
-                f"{node.address}/score-report", json=payload
+                f"http://{node.ip}:{node.port}/score-report", json=payload
             )
 
             if response.status_code == 200:
