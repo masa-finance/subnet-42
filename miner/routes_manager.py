@@ -4,6 +4,7 @@ from miner.utils import (
     get_public_key,
     exchange_symmetric_key,
 )
+from fiber.logging_utils import get_logger
 
 import os
 from starlette.requests import Request
@@ -14,6 +15,8 @@ import httpx
 
 tee_address = os.getenv("MINER_TEE_ADDRESS")
 client = httpx.AsyncClient(base_url=tee_address)
+
+logger = get_logger(__name__)
 
 
 class MinerAPI:
@@ -64,6 +67,54 @@ class MinerAPI:
             methods=["GET", "POST", "PUT", "DELETE"],
             tags=["proxy"],
         )
+
+        self.app.add_api_route(
+            "/score-report",
+            self.score_report_handler,
+            methods=["POST"],
+            tags=["scoring"],
+        )
+
+    async def score_report_handler(self, request: Request):
+        try:
+            payload = await request.json()
+            logger.info(
+                f"\n\033[32m"
+                f"====================================\n"
+                f"       RECEIVED SCORE REPORT        \n"
+                f"====================================\033[0m\n\n"
+                f"  Validator UID: {payload['uid']}\n"
+                f"  Validator Hotkey: {payload['hotkey']}\n"
+                f"  Score: \033[33m{payload['score']:.4f}\033[0m\n"
+            )
+
+            telemetry = payload["telemetry"]
+            formatted_telemetry = (
+                f"  Web Success: {telemetry.get('web_success', 'N/A')}\n"
+                f"  Twitter Stats:\n"
+                f"    - Returned Tweets: {telemetry.get('twitter_returned_tweets', 'N/A')}\n"
+                f"    - Returned Profiles: {telemetry.get('twitter_returned_profiles', 'N/A')}\n"
+                f"    - Errors: {telemetry.get('twitter_errors', 'N/A')}\n"
+                f"    - Auth Errors: {telemetry.get('twitter_auth_errors', 'N/A')}\n"
+                f"    - Rate Limit Errors: {telemetry.get('twitter_ratelimit_errors', 'N/A')}\n"
+                f"  Web Errors: {telemetry.get('web_errors', 'N/A')}\n"
+                f"  Timing:\n"
+                f"    - Boot Time: {telemetry.get('boot_time', 'N/A')}\n"
+                f"    - Last Operation: {telemetry.get('last_operation_time', 'N/A')}\n"
+                f"    - Current Time: {telemetry.get('current_time', 'N/A')}\n"
+            )
+
+            logger.info(
+                f"\n\033[32m"
+                f"====================================\n"
+                f"    TELEMETRY METRICS FOR PERIOD    \n"
+                f"====================================\033[0m\n\n"
+                f"{formatted_telemetry}"
+            )
+            return {"status": "success"}
+        except Exception as e:
+            logger.error(f"\n\033[31mError processing score report: {str(e)}\033[0m")
+            return {"status": "error", "message": str(e)}
 
     async def healthcheck(self, request: Request):
         return healthcheck(self.miner)
