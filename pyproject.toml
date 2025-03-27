@@ -14,6 +14,7 @@ dependencies = [
     "py-ed25519-zebra-bindings==1.1.0",
     "py-sr25519-bindings==0.2.1",
     "nats-py==2.6.0",
+    "scikit-learn",
     "bittensor",
     "fiber @ git+https://github.com/5u6r054/fiber.git@fix/remove-bittensor-commit-reveal-dependency"
 ]
