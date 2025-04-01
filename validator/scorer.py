@@ -50,13 +50,14 @@ class NodeDataScorer:
                 telemetry_result = await telemetry_client.execute_telemetry_sequence()
 
                 if telemetry_result:
-                    logger.debug(
+                    logger.info(
                         f"Node {hotkey} telemetry successful: {telemetry_result}"
                     )
                     uid = self.validator.metagraph.nodes[hotkey].node_id
                     telemetry_data = NodeData(
                         hotkey=hotkey,
                         uid=uid,
+                        worker_id=telemetry_result.get("worker_id", "N/A"),
                         timestamp="",
                         boot_time=telemetry_result.get("boot_time", 0),
                         last_operation_time=telemetry_result.get(

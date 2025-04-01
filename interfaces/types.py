@@ -20,6 +20,7 @@ class ConnectedNode(JSONSerializable):
 @dataclass
 class NodeData(JSONSerializable):
     hotkey: str
+    worker_id: str
     uid: int
     boot_time: int
     last_operation_time: int

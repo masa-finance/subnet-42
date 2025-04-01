@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import sqlite3
 from fiber.logging_utils import get_logger
 from interfaces.types import NodeData
+from validator.telemetry import TEETelemetryClient
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -149,6 +150,47 @@ class NodeManager:
         self.validator.connected_tee_list = []
         await self.update_tee_list()
 
+    async def send_custom_message(self, node_hotkey: str, message: str) -> None:
+        """
+        Send a custom message to a specific miner.
+
+        Args:
+            node_hotkey (str): The miner's hotkey
+            message (str): The message to send
+        """
+        try:
+            if node_hotkey not in self.connected_nodes:
+                logger.warning(f"No connected node found for hotkey {node_hotkey}")
+                return
+
+            node = self.connected_nodes[node_hotkey]
+            uid = str(
+                self.validator.metagraph.nodes[
+                    self.validator.keypair.ss58_address
+                ].node_id
+            )
+            payload = {
+                "message": message,
+                "sender": f"Validator {uid} ({self.validator.keypair.ss58_address})",
+            }
+
+            response = await self.validator.http_client_manager.client.post(
+                f"http://{node.ip}:{node.port}/custom-message", json=payload
+            )
+
+            if response.status_code == 200:
+                logger.debug(f"Successfully sent custom message to miner {node_hotkey}")
+            else:
+                logger.warning(
+                    f"Failed to send custom message to miner {node_hotkey}. "
+                    f"Status code: {response.status_code}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error sending custom message to miner {node_hotkey}: {str(e)}"
+            )
+
     async def update_tee_list(self):
         logger.info("Starting TEE list update")
         routing_table = self.validator.routing_table
@@ -190,13 +232,55 @@ class NodeManager:
                                 continue
 
                             try:
-                                routing_table.add_miner_address(
-                                    hotkey, node.node_id, tee_address
+                                telemetry_client = TEETelemetryClient(tee_address)
+
+                                logger.info(
+                                    f"Executing telemetry sequence for node {hotkey} at {tee_address}"
                                 )
+
+                                telemetry_result = (
+                                    await telemetry_client.execute_telemetry_sequence()
+                                )
+
+                                worker_id = telemetry_result.get("worker_id", "N/A")
+
+                                worker_hotkey = routing_table.get_worker_hotkey(
+                                    worker_id=worker_id
+                                )
+
+                                is_worker_already_owned = (
+                                    worker_hotkey is not None
+                                    and worker_hotkey is not hotkey
+                                )
+
+                                # This checks that a worker address is only owned by the first node that requests it
+                                # For removing this restriction shoot a message on discord
+                                if is_worker_already_owned:
+                                    logger.warning(
+                                        f"Worker ID {worker_id} is already registered to another hotkey. "
+                                        f"Skipping registration for {hotkey}."
+                                    )
+                                    continue
+
+                                routing_table.register_worker(
+                                    hotkey=hotkey, worker_id=worker_id
+                                )
+                                routing_table.add_miner_address(
+                                    hotkey, node.node_id, tee_address, worker_id
+                                )
+
                                 logger.debug(
                                     f"Added TEE address {tee_address} for "
                                     f"hotkey {hotkey}"
                                 )
+
+                                if not worker_hotkey:
+                                    # Send notification to miner about successful registration
+                                    await self.send_custom_message(
+                                        hotkey,
+                                        f"Your TEE address {tee_address} has been successfully registered with worker_id {worker_id} for hotkey {hotkey}",
+                                    )
+
                             except sqlite3.IntegrityError:
                                 logger.debug(
                                     f"TEE address {tee_address} already exists in "

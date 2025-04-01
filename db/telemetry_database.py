@@ -28,7 +28,8 @@ class TelemetryDatabase:
                     twitter_returned_tweets INT,
                     twitter_scrapes INT,
                     web_errors INT,
-                    web_success INT
+                    web_success INT,
+                    worker_id TEXT
                 )
             """
             )
@@ -41,8 +42,9 @@ class TelemetryDatabase:
                 """
                 INSERT INTO telemetry (hotkey, uid, boot_time, last_operation_time, current_time, 
                 twitter_auth_errors, twitter_errors, twitter_ratelimit_errors, twitter_returned_other, 
-                twitter_returned_profiles, twitter_returned_tweets, twitter_scrapes, web_errors, web_success) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                twitter_returned_profiles, twitter_returned_tweets, twitter_scrapes, web_errors, web_success,
+                worker_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     telemetry_data.hotkey,
@@ -59,6 +61,7 @@ class TelemetryDatabase:
                     telemetry_data.twitter_scrapes,
                     telemetry_data.web_errors,
                     telemetry_data.web_success,
+                    telemetry_data.worker_id,
                 ),
             )
             conn.commit()
