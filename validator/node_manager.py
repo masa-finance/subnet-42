@@ -339,13 +339,6 @@ class NodeManager:
                                     await telemetry_client.execute_telemetry_sequence()
                                 )
 
-                                logger.info(
-                                    f"Telemetry successful for hotkey {hotkey} at {tee_address}: {telemetry_result}"
-                                )
-                                logger.info(
-                                    f"Telemetry successful for hotkey {hotkey} at {tee_address} with worker_id {telemetry_result.get('worker_id', 'N/A')}"
-                                )
-
                                 if not telemetry_result:
                                     logger.warn(
                                         f"Telemetry failed for hotkey {hotkey} - {tee_address} - {_.ip}:{_.port}"
@@ -357,6 +350,10 @@ class NodeManager:
                                         message="Telemetry failed to return results",
                                     )
                                     continue
+
+                                logger.info(
+                                    f"Telemetry successful for hotkey {hotkey} at {tee_address} with worker_id {telemetry_result.get('worker_id', 'N/A')}"
+                                )
 
                                 worker_id = telemetry_result.get("worker_id", None)
 
