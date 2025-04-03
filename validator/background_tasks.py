@@ -24,18 +24,32 @@ class BackgroundTasks:
 
     async def sync_loop(self, cadence_seconds) -> None:
         """Background task to sync metagraph"""
+        # Ensure cadence_seconds is never zero to prevent division by zero
+        if cadence_seconds <= 0:
+            cadence_seconds = 60  # Default to 1 minute if invalid
+            logger.warning(f"Invalid sync cadence, using default: 60 seconds")
+
         while True:
             try:
-                await self.validator.node_manager.connect_new_nodes()
+                logger.info("Running sync loop")
                 await self.validator.metagraph_manager.sync_metagraph()
 
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
                 logger.error(f"Error in sync metagraph: {str(e)}")
-                await asyncio.sleep(cadence_seconds / 2)  # Wait before retrying
+                # Use a minimum retry delay to avoid division by zero
+                retry_delay = max(30, cadence_seconds / 2)  # At least 30 seconds
+                await asyncio.sleep(retry_delay)  # Wait before retrying
 
     async def update_tee(self, cadence_seconds) -> None:
         """Background task to update tee"""
+        # Ensure cadence_seconds is never zero to prevent division by zero
+        if cadence_seconds <= 0:
+            cadence_seconds = 120  # Default to 2 minutes if invalid
+            logger.warning(
+                f"Invalid TEE update cadence ({cadence_seconds}), using default: 120 seconds"
+            )
+
         while True:
             try:
                 await self.validator.NATSPublisher.send_connected_nodes()
@@ -48,10 +62,17 @@ class BackgroundTasks:
             except Exception as e:
                 logger.error(f"Error updating TEE 🚩: {str(e)}")
                 logger.debug(f"Error in updating tee: {str(e)}")
-                await asyncio.sleep(cadence_seconds / 2)  # Wait before retrying
+                # Use a minimum retry delay to avoid division by zero
+                retry_delay = max(30, cadence_seconds / 2)  # At least 30 seconds
+                await asyncio.sleep(retry_delay)  # Wait before retrying
 
     async def set_weights_loop(self, cadence_seconds) -> None:
         """Background task to set weights using the weights manager"""
+        # Ensure cadence_seconds is never zero to prevent division by zero
+        if cadence_seconds <= 0:
+            cadence_seconds = 60  # Default to 1 minute if invalid
+            logger.warning(f"Invalid weights cadence, using default: 60 seconds")
+
         while True:
             try:
                 # TODO: Calculate scores and set weights
@@ -59,4 +80,6 @@ class BackgroundTasks:
                 await asyncio.sleep(cadence_seconds)
             except Exception as e:
                 logger.error(f"Error in setting weights: {str(e)}")
-                await asyncio.sleep(cadence_seconds / 2)  # Wait before retrying
+                # Use a minimum retry delay to avoid division by zero
+                retry_delay = max(30, cadence_seconds / 2)  # At least 30 seconds
+                await asyncio.sleep(retry_delay)  # Wait before retrying
