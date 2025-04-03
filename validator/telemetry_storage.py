@@ -18,7 +18,10 @@ class TelemetryStorage:
             logger.error(f"Failed to add telemetry: {e}")
 
     def clean_old_entries(self, hours):
-        """Clean all telemetry entries older than the specified number of hours."""
+        """
+        Clean all telemetry entries older than the specified number
+        of hours.
+        """
         try:
             self.db.clean_old_entries(hours)
         except sqlite3.Error as e:
@@ -26,8 +29,8 @@ class TelemetryStorage:
 
     def get_telemetry_by_hotkey(self, hotkey):
         """
-        Retrieve telemetry data for a specific hotkey using the TelemetryDatabase
-        method. Returns a list of NodeData objects.
+        Retrieve telemetry data for a specific hotkey using the
+        TelemetryDatabase method. Returns a list of NodeData objects.
         """
         try:
             telemetry_data = self.db.get_telemetry_by_hotkey(hotkey)
@@ -48,6 +51,7 @@ class TelemetryStorage:
                     web_errors=row[13],
                     web_success=row[14],
                     timestamp=row[2],
+                    worker_id=row[15],
                 )
                 for row in telemetry_data
             ]
@@ -56,7 +60,10 @@ class TelemetryStorage:
             return []
 
     def get_all_hotkeys_with_telemetry(self):
-        """Retrieve all unique hotkeys that have at least one telemetry entry using the TelemetryDatabase method."""
+        """
+        Retrieve all unique hotkeys that have at least one telemetry entry
+        using the TelemetryDatabase method.
+        """
         try:
             hotkeys = self.db.get_all_hotkeys_with_telemetry()
             return hotkeys

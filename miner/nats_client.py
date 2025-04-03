@@ -54,3 +54,49 @@ class NatsClient:
                 # Ensure the NATS connection is closed
                 logger.debug("Closing NATS connection")
                 await self.nc.close()
+
+    async def send_unregistered_tees(self, unregistered_tees):
+        # Connect to the NATS server
+        nats_url = os.getenv("NATS_URL", None)
+        logger.debug(f"Connecting to NATS server at {nats_url}")
+
+        if nats_url:
+            try:
+                await self.nc.connect(
+                    nats_url,
+                    error_cb=self.error_callback,
+                )
+            except Exception as e:
+                logger.info(f"An error ocurred when connecting to nats 🚩 {str(e)}")
+                logger.debug(
+                    f"Failed to connect to NATS server ( {nats_url} ) : {str(e)}"
+                )
+                return
+
+            try:
+                nats_message = json.dumps({"Miners": unregistered_tees})
+                channel_name = os.getenv(
+                    "UNREGISTERED_TEE_NATS_CHANNEL_NAME", "registration"
+                )
+
+                logger.info(
+                    f"Publishing message to channel '{channel_name}' with "
+                    f"{len(unregistered_tees)} unregistered TEEs"
+                )
+                logger.debug(f"Message content: {nats_message}")
+
+                await self.nc.publish(channel_name, nats_message.encode())
+                logger.info("Successfully published unregistered TEEs message ✅")
+
+            except Exception as e:
+                logger.info(
+                    f"Error publishing unregistered TEEs message to NATS ({nats_url})"
+                )
+                logger.debug(
+                    f"Error publishing unregistered TEEs message to NATS: {str(e)}"
+                )
+
+            finally:
+                # Ensure the NATS connection is closed
+                logger.debug("Closing NATS connection")
+                await self.nc.close()

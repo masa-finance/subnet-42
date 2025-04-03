@@ -1,19 +1,4 @@
 services:
-  nats:
-    profiles:
-      - nats
-      - validator
-    image: nats:latest
-    pull_policy: always
-    ports:
-      - "4222:4222"
-    command: ["--jetstream"]
-    healthcheck:
-      test: ["CMD", "nats-server", "--ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   subnet42:
     profiles: ["miner", "validator"]
     image: masaengineering/subnet-42:latest
@@ -61,6 +46,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  nats_data:
