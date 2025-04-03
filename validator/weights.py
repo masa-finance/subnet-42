@@ -125,6 +125,7 @@ class WeightsManager:
                 delta_data = NodeData(
                     hotkey=hotkey,
                     uid=latest.uid,
+                    worker_id=latest.worker_id,
                     timestamp=latest.timestamp,
                     boot_time=latest.boot_time - oldest.boot_time,
                     last_operation_time=(

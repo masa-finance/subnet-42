@@ -7,6 +7,7 @@ class TelemetryDatabase:
         self.db_path = db_path
         self.lock = Lock()
         self._create_table()
+        self._ensure_worker_id_column()
 
     def _create_table(self):
         with self.lock, sqlite3.connect(self.db_path) as conn:
@@ -34,6 +35,27 @@ class TelemetryDatabase:
             """
             )
             conn.commit()
+
+    def _ensure_worker_id_column(self):
+        """
+        Ensure the worker_id column exists in the telemetry table.
+        This handles database migrations for existing databases.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Check if worker_id column exists
+            cursor.execute("PRAGMA table_info(telemetry)")
+            columns = [col[1] for col in cursor.fetchall()]
+
+            if "worker_id" not in columns:
+                # Add the worker_id column if it doesn't exist
+                cursor.execute(
+                    """
+                    ALTER TABLE telemetry
+                    ADD COLUMN worker_id TEXT
+                    """
+                )
+                conn.commit()
 
     def add_telemetry(self, telemetry_data):
         with self.lock, sqlite3.connect(self.db_path) as conn:

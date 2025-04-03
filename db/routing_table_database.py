@@ -8,6 +8,7 @@ class RoutingTableDatabase:
         self.lock = Lock()
         self._create_table()
         self._create_worker_registry_table()
+        self._create_unregistered_tees_table()
 
     def _create_table(self):
         with self.lock, sqlite3.connect(self.db_path) as conn:
@@ -32,6 +33,20 @@ class RoutingTableDatabase:
                 """
                 CREATE TABLE IF NOT EXISTS worker_registry (
                     worker_id TEXT PRIMARY KEY,
+                    hotkey TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+            conn.commit()
+
+    def _create_unregistered_tees_table(self):
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS unregistered_tees (
+                    address TEXT PRIMARY KEY,
                     hotkey TEXT NOT NULL,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -151,14 +166,17 @@ class RoutingTableDatabase:
         """
         with self.lock, sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            # Ensure worker_id is treated as a string for comparison
+            worker_id_str = str(worker_id)
             cursor.execute(
                 """
-                SELECT hotkey FROM worker_registry 
-                WHERE worker_id = ?
+                SELECT hotkey FROM worker_registry WHERE worker_id = ?;
                 """,
-                (worker_id,),
+                (worker_id_str,),
             )
+
             result = cursor.fetchone()
+
             return result[0] if result else None
 
     def get_workers_by_hotkey(self, hotkey):
@@ -205,3 +223,61 @@ class RoutingTableDatabase:
                 (f"-{hours} hours",),
             )
             conn.commit()
+
+    def add_unregistered_tee(self, address, hotkey):
+        """
+        Add a new unregistered TEE to the database.
+        If the address already exists, it will update the hotkey.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO unregistered_tees (address, hotkey) 
+                VALUES (?, ?)
+                """,
+                (address, hotkey),
+            )
+            conn.commit()
+
+    def clean_old_unregistered_tees(self):
+        """
+        Remove all unregistered TEEs where the timestamp is more than one hour old.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM unregistered_tees 
+                WHERE timestamp < datetime('now', '-1 hour')
+                """
+            )
+            conn.commit()
+
+    def get_all_unregistered_tees(self):
+        """
+        Get all unregistered TEEs from the database.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT address, hotkey FROM unregistered_tees
+                """
+            )
+            results = cursor.fetchall()
+            return [(address, hotkey) for address, hotkey in results]
+
+    def get_all_unregistered_tee_addresses(self):
+        """
+        Get all addresses from the unregistered_tees table.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT address FROM unregistered_tees
+                """
+            )
+            results = cursor.fetchall()
+            return [address[0] for address in results]

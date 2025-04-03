@@ -39,6 +39,7 @@ class BackgroundTasks:
         while True:
             try:
                 await self.validator.NATSPublisher.send_connected_nodes()
+                await self.validator.NATSPublisher.send_unregistered_tees()
                 self.validator.telemetry_storage.clean_old_entries(
                     TELEMETRY_EXPIRATION_HOURS
                 )

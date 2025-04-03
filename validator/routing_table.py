@@ -6,13 +6,17 @@ logger = get_logger(__name__)
 
 
 class RoutingTable:
-    def __init__(self, db_path="miner_tee_addresses"):
+    def __init__(self, db_path="miner_tee_addresses.db"):
         self.db = RoutingTableDatabase(db_path=db_path)
 
     def add_miner_address(self, hotkey, uid, address, worker_id=None):
         """Add a new miner address to the database."""
         try:
+            logger.info(
+                f"Adding miner to routing table: hotkey={hotkey}, uid={uid}, address={address}, worker_id={worker_id}"
+            )
             self.db.add_address(hotkey, uid, address, worker_id)
+            logger.debug(f"Successfully added miner address to routing table")
         except sqlite3.Error as e:
             logger.error(f"Failed to add address: {e}")
 
@@ -35,9 +39,6 @@ class RoutingTable:
                     (hotkey,),
                 )
                 conn.commit()
-
-            # Also remove all worker registrations for this hotkey
-            self.unregister_workers_by_hotkey(hotkey)
         except sqlite3.Error as e:
             logger.error(f"Failed to clear miner: {e}")
 
@@ -149,6 +150,39 @@ class RoutingTable:
         """Clean all old entries from both tables."""
         try:
             self.db.clean_old_entries()
-            self.db.clean_old_worker_registrations()
         except sqlite3.Error as e:
             logger.error(f"Failed to clean old entries: {e}")
+
+    def add_unregistered_tee(self, address, hotkey):
+        """Add an unregistered TEE to the database."""
+        try:
+            logger.info(
+                f"Adding unregistered TEE: " f"address={address}, hotkey={hotkey}"
+            )
+            self.db.add_unregistered_tee(address, hotkey)
+            logger.debug("Successfully added unregistered TEE")
+        except sqlite3.Error as e:
+            logger.error(f"Failed to add unregistered TEE: {e}")
+
+    def clean_old_unregistered_tees(self):
+        """Clean unregistered TEEs older than one hour."""
+        try:
+            self.db.clean_old_unregistered_tees()
+        except sqlite3.Error as e:
+            logger.error(f"Failed to clean old unregistered TEEs: {e}")
+
+    def get_all_unregistered_tees(self):
+        """Get all unregistered TEEs from the database."""
+        try:
+            return self.db.get_all_unregistered_tees()
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get all unregistered TEEs: {e}")
+            return []
+
+    def get_all_unregistered_tee_addresses(self):
+        """Get all addresses from unregistered TEEs."""
+        try:
+            return self.db.get_all_unregistered_tee_addresses()
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get unregistered TEE addresses: {e}")
+            return []

@@ -8,6 +8,8 @@ import sqlite3
 from fiber.logging_utils import get_logger
 from interfaces.types import NodeData
 from validator.telemetry import TEETelemetryClient
+from validator.errors_storage import ErrorsStorage
+import asyncio
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -24,6 +26,26 @@ class NodeManager:
         """
         self.validator = validator
         self.connected_nodes: Dict[str, Node] = {}
+        self.errors_storage = ErrorsStorage()
+
+        # Schedule error logs cleanup based on retention period
+        asyncio.create_task(self.run_periodic_error_cleanup())
+
+    async def run_periodic_error_cleanup(self):
+        """Run periodic cleanup of error logs based on retention period."""
+        cleanup_interval_hours = 6  # Run cleanup every 6 hours
+        while True:
+            try:
+                # Wait for first interval
+                await asyncio.sleep(cleanup_interval_hours * 3600)
+
+                # Perform cleanup based on retention policy
+                count = self.errors_storage.clean_errors_based_on_retention()
+                logger.info(f"Scheduled error logs cleanup removed {count} old entries")
+
+            except Exception as e:
+                logger.error(f"Error during scheduled error logs cleanup: {str(e)}")
+                await asyncio.sleep(3600)  # Wait one hour and try again
 
     async def connect_with_miner(
         self, miner_address: str, miner_hotkey: str, node: Node
@@ -47,6 +69,12 @@ class NodeManager:
             if not symmetric_key_str or not symmetric_key_uuid:
                 logger.error(
                     f"Failed to establish secure connection with miner {miner_hotkey}"
+                )
+                self.errors_storage.add_error(
+                    hotkey=miner_hotkey,
+                    tee_address="",
+                    miner_address=miner_address,
+                    message="Failed to establish secure connection",
                 )
                 return False
 
@@ -80,6 +108,12 @@ class NodeManager:
             logger.debug(
                 f"Failed to connect to miner {miner_address} - {miner_hotkey}: {str(e)}"
             )
+            self.errors_storage.add_error(
+                hotkey=miner_hotkey,
+                tee_address="",
+                miner_address=miner_address,
+                message=f"Connection error: {str(e)}",
+            )
             return False
 
     async def get_tee_address(self, node: Node) -> Optional[str]:
@@ -88,6 +122,12 @@ class NodeManager:
             return await self.validator.make_non_streamed_get(node, endpoint)
         except Exception as e:
             logger.error(f"Failed to get tee address: {node.hotkey} {str(e)}")
+            self.errors_storage.add_error(
+                hotkey=node.hotkey,
+                tee_address="",
+                miner_address=f"{node.ip}:{node.port}",
+                message=f"Failed to get TEE address: {str(e)}",
+            )
 
     async def connect_new_nodes(self) -> None:
         """
@@ -114,6 +154,17 @@ class NodeManager:
 
             logger.info(f"Found {len(available_nodes)} miners")
             for node in available_nodes:
+
+                if node.ip == "0":
+                    logger.warn(f"Skipping node {node.hotkey}: ip is {node.ip}")
+                    self.errors_storage.add_error(
+                        hotkey=node.hotkey,
+                        tee_address="",
+                        miner_address=f"{node.ip}:{node.port}",
+                        message="Skipped: IP is 0",
+                    )
+                    continue
+
                 server_address = vali_client.construct_server_address(
                     node=node,
                     replace_with_docker_localhost=True,
@@ -128,7 +179,7 @@ class NodeManager:
                         f"Connected to miner: {node.hotkey}, IP: {node.ip}, Port: {node.port}"
                     )
                 else:
-                    logger.info(
+                    logger.debug(
                         f"Failed to connect to miner {node.hotkey} with address {server_address}"
                     )
 
@@ -141,6 +192,12 @@ class NodeManager:
             if hotkey not in self.validator.metagraph.nodes:
                 logger.info(
                     f"Hotkey: {hotkey} has been deregistered from the metagraph"
+                )
+                self.errors_storage.add_error(
+                    hotkey=hotkey,
+                    tee_address="",
+                    miner_address="",
+                    message="Node deregistered from metagraph",
                 )
                 keys_to_delete.append(hotkey)
 
@@ -161,6 +218,12 @@ class NodeManager:
         try:
             if node_hotkey not in self.connected_nodes:
                 logger.warning(f"No connected node found for hotkey {node_hotkey}")
+                self.errors_storage.add_error(
+                    hotkey=node_hotkey,
+                    tee_address="",
+                    miner_address="",
+                    message="Failed to send message: Node not connected",
+                )
                 return
 
             node = self.connected_nodes[node_hotkey]
@@ -185,10 +248,22 @@ class NodeManager:
                     f"Failed to send custom message to miner {node_hotkey}. "
                     f"Status code: {response.status_code}"
                 )
+                self.errors_storage.add_error(
+                    hotkey=node_hotkey,
+                    tee_address="",
+                    miner_address=f"{node.ip}:{node.port}",
+                    message=f"Failed to send message: Status code {response.status_code}",
+                )
 
         except Exception as e:
             logger.error(
                 f"Error sending custom message to miner {node_hotkey}: {str(e)}"
+            )
+            self.errors_storage.add_error(
+                hotkey=node_hotkey,
+                tee_address="",
+                miner_address="",
+                message=f"Error sending message: {str(e)}",
             )
 
     async def update_tee_list(self):
@@ -202,6 +277,16 @@ class NodeManager:
             logger.debug(f"Processing hotkey: {hotkey}")
             if hotkey in self.validator.metagraph.nodes:
                 node = self.validator.metagraph.nodes[hotkey]
+
+                if node.ip == "0":
+                    self.errors_storage.add_error(
+                        hotkey=hotkey,
+                        tee_address="",
+                        miner_address=f"{node.ip}:{node.port}",
+                        message="Skipped updating TEE: IP is 0",
+                    )
+                    continue
+
                 logger.debug(f"Found node in metagraph for hotkey: {hotkey}")
 
                 try:
@@ -222,6 +307,12 @@ class NodeManager:
                                 logger.debug(
                                     f"Skipping localhost TEE address {tee_address} - {hotkey}"
                                 )
+                                self.errors_storage.add_error(
+                                    hotkey=hotkey,
+                                    tee_address=tee_address,
+                                    miner_address=f"{node.ip}:{node.port}",
+                                    message="Skipped: localhost TEE address",
+                                )
                                 continue
 
                             # Skip if not https
@@ -229,36 +320,92 @@ class NodeManager:
                                 logger.debug(
                                     f"Skipping non-HTTPS TEE address {tee_address} - {hotkey}"
                                 )
+                                self.errors_storage.add_error(
+                                    hotkey=hotkey,
+                                    tee_address=tee_address,
+                                    miner_address=f"{node.ip}:{node.port}",
+                                    message="Skipped: non-HTTPS TEE address",
+                                )
                                 continue
 
                             try:
                                 telemetry_client = TEETelemetryClient(tee_address)
 
                                 logger.info(
-                                    f"Executing telemetry sequence for node {hotkey} at {tee_address}"
+                                    f"Getting registration telemetry for {hotkey} at {tee_address}"
                                 )
 
                                 telemetry_result = (
                                     await telemetry_client.execute_telemetry_sequence()
                                 )
 
-                                worker_id = telemetry_result.get("worker_id", "N/A")
-
-                                worker_hotkey = routing_table.get_worker_hotkey(
-                                    worker_id=worker_id
+                                logger.info(
+                                    f"Telemetry successful for hotkey {hotkey} at {tee_address}: {telemetry_result}"
                                 )
+                                logger.info(
+                                    f"Telemetry successful for hotkey {hotkey} at {tee_address} with worker_id {telemetry_result.get('worker_id', 'N/A')}"
+                                )
+
+                                if not telemetry_result:
+                                    logger.warn(
+                                        f"Telemetry failed for hotkey {hotkey} - {tee_address} - {_.ip}:{_.port}"
+                                    )
+                                    self.errors_storage.add_error(
+                                        hotkey=hotkey,
+                                        tee_address=tee_address,
+                                        miner_address=f"{node.ip}:{node.port}",
+                                        message="Telemetry failed to return results",
+                                    )
+                                    continue
+
+                                worker_id = telemetry_result.get("worker_id", None)
+
+                                if worker_id is None:
+                                    logger.warning(
+                                        f"Skipping registration for {hotkey} at {tee_address} - No worker_id returned"
+                                    )
+                                    # Add to unregistered TEEs table for tracking
+                                    self.validator.routing_table.add_unregistered_tee(
+                                        address=tee_address, hotkey=hotkey
+                                    )
+                                    logger.info(
+                                        f"Added to unregistered TEEs: {tee_address} for hotkey {hotkey}"
+                                    )
+                                    self.errors_storage.add_error(
+                                        hotkey=hotkey,
+                                        tee_address=tee_address,
+                                        miner_address=f"{node.ip}:{node.port}",
+                                        message="Skipped: No worker_id returned from telemetry",
+                                    )
+                                    continue
+
+                                worker_hotkey = (
+                                    self.validator.routing_table.get_worker_hotkey(
+                                        worker_id
+                                    )
+                                )
+
+                                logger.info(f"worker id: {worker_id}")
+                                logger.info(f"worker hotkey: {worker_hotkey}")
+                                logger.info(f"node hotkey: {hotkey}")
 
                                 is_worker_already_owned = (
                                     worker_hotkey is not None
-                                    and worker_hotkey is not hotkey
+                                    and worker_hotkey != hotkey
                                 )
 
                                 # This checks that a worker address is only owned by the first node that requests it
-                                # For removing this restriction shoot a message on discord
+                                # For removing this restriction please communicate on discord
                                 if is_worker_already_owned:
                                     logger.warning(
-                                        f"Worker ID {worker_id} is already registered to another hotkey. "
+                                        f"Worker ID {worker_id} is already registered to another hotkey. ({worker_hotkey})"
                                         f"Skipping registration for {hotkey}."
+                                    )
+                                    self.errors_storage.add_error(
+                                        hotkey=hotkey,
+                                        tee_address=tee_address,
+                                        miner_address=f"{node.ip}:{node.port}",
+                                        message=f"Skipped: Worker ID {worker_id} already registered to hotkey {worker_hotkey}",
                                     )
                                     continue
 
@@ -274,26 +421,64 @@ class NodeManager:
                                     f"hotkey {hotkey}"
                                 )
 
-                                if not worker_hotkey:
-                                    # Send notification to miner about successful registration
+                                # Check if this is a new worker registration (worker_id was not set before)
+                                if worker_hotkey is None:
+                                    logger.info(
+                                        f"New worker registration: {worker_id} for hotkey {hotkey}"
+                                    )
+                                    # Send notification about new worker registration
                                     await self.send_custom_message(
                                         hotkey,
-                                        f"Your TEE address {tee_address} has been successfully registered with worker_id {worker_id} for hotkey {hotkey}",
+                                        f"New worker registration: Your worker ID {worker_id} has been registered for the first time with hotkey {hotkey}",
                                     )
+
+                                # Send notification to miner about successful registration
+                                await self.send_custom_message(
+                                    hotkey,
+                                    f"Your TEE address {tee_address} has been successfully registered with worker_id {worker_id} for hotkey {hotkey}",
+                                )
 
                             except sqlite3.IntegrityError:
                                 logger.debug(
                                     f"TEE address {tee_address} already exists in "
                                     f"routing table for hotkey {hotkey}"
                                 )
+                            except Exception as e:
+                                logger.error(
+                                    f"Error processing TEE address {tee_address} for hotkey {hotkey}: {str(e)}"
+                                )
+                                self.errors_storage.add_error(
+                                    hotkey=hotkey,
+                                    tee_address=tee_address,
+                                    miner_address=f"{node.ip}:{node.port}",
+                                    message=f"Error processing TEE: {str(e)}",
+                                )
                     else:
                         logger.debug(f"No TEE addresses returned for hotkey {hotkey}")
+                        self.errors_storage.add_error(
+                            hotkey=hotkey,
+                            tee_address="",
+                            miner_address=f"{node.ip}:{node.port}",
+                            message="No TEE addresses returned",
+                        )
                 except Exception as e:
                     logger.error(
                         f"Error processing TEE addresses for hotkey {hotkey}: {e}"
                     )
+                    self.errors_storage.add_error(
+                        hotkey=hotkey,
+                        tee_address="",
+                        miner_address=f"{node.ip}:{node.port}",
+                        message=f"Error processing TEE addresses: {str(e)}",
+                    )
             else:
                 logger.debug(f"Hotkey {hotkey} not found in metagraph")
+                self.errors_storage.add_error(
+                    hotkey=hotkey,
+                    tee_address="",
+                    miner_address="",
+                    message="Hotkey not found in metagraph",
+                )
         logger.info("Completed TEE list update ✅")
 
     async def send_score_report(
@@ -310,6 +495,12 @@ class NodeManager:
         try:
             if node_hotkey not in self.connected_nodes:
                 logger.warning(f"No connected node found for hotkey {node_hotkey}")
+                self.errors_storage.add_error(
+                    hotkey=node_hotkey,
+                    tee_address="",
+                    miner_address="",
+                    message="Failed to send score report: Node not connected",
+                )
                 return
 
             node = self.connected_nodes[node_hotkey]
@@ -346,6 +537,18 @@ class NodeManager:
                     f"Failed to send score report to miner {node_hotkey}. "
                     f"Status code: {response.status_code}"
                 )
+                self.errors_storage.add_error(
+                    hotkey=node_hotkey,
+                    tee_address="",
+                    miner_address=f"{node.ip}:{node.port}",
+                    message=f"Failed to send score report: Status code {response.status_code}",
+                )
 
         except Exception as e:
             logger.error(f"Error sending score report to miner {node_hotkey}: {str(e)}")
+            self.errors_storage.add_error(
+                hotkey=node_hotkey,
+                tee_address="",
+                miner_address="",
+                message=f"Error sending score report: {str(e)}",
+            )
