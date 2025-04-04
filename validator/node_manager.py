@@ -343,6 +343,13 @@ class NodeManager:
                                     logger.warn(
                                         f"Telemetry failed for hotkey {hotkey} - {tee_address} - {_.ip}:{_.port}"
                                     )
+                                    # Add to unregistered TEEs table for tracking
+                                    self.validator.routing_table.add_unregistered_tee(
+                                        address=tee_address, hotkey=hotkey
+                                    )
+                                    logger.info(
+                                        f"Added to unregistered TEEs: {tee_address} for hotkey {hotkey}"
+                                    )
                                     self.errors_storage.add_error(
                                         hotkey=hotkey,
                                         tee_address=tee_address,
