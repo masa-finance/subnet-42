@@ -140,7 +140,6 @@ class AgentMiner:
                         logger.error(
                             f"Failed to post IP/Port to chain: {str(e)}", exc_info=True
                         )
-                        raise Exception(f"Failed to post IP/Port to chain {e}") from e
                 else:
                     logger.info(
                         f"IP/Port already up to date on chain: IP={node.ip}, "
@@ -152,11 +151,9 @@ class AgentMiner:
                     f"Please ensure it is registered."
                 )
                 logger.error(err_msg)
-                raise Exception(err_msg)
 
         except Exception as e:
             logger.error(f"Error in post_ip_to_chain: {str(e)}", exc_info=True)
-            raise
 
     def node(self) -> Optional[Node]:
         try:
