@@ -1,4 +1,35 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, Header
+from typing import Optional, Callable
+
+
+def get_api_key(api_key: Optional[str] = Header(None, alias="X-API-Key")) -> str:
+    """
+    Dependency to check the API key in the header.
+
+    :param api_key: The API key provided in the header.
+    :return: The API key if valid.
+    :raises HTTPException: If the API key is invalid or missing.
+    """
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API Key header missing")
+    return api_key
+
+
+def require_api_key(api_key: str = Depends(get_api_key), config=None) -> None:
+    """
+    Dependency to validate the API key against the configured value.
+
+    :param api_key: The API key from the request header.
+    :param config: The configuration object with API_KEY defined.
+    :raises HTTPException: If the API key doesn't match the configured value or
+                           no API key is configured.
+    """
+    # Check if the API key is valid
+    if not config or not hasattr(config, "API_KEY") or not config.API_KEY:
+        return  # No API key configured, skip validation
+
+    if api_key != config.API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
 
 
 def register_routes(app: FastAPI, healthcheck_func):
@@ -22,6 +53,19 @@ class ValidatorAPI:
         self.app = FastAPI()
         self.register_routes()
 
+    def get_api_key_dependency(self) -> Callable:
+        """Get a dependency function that checks the API key against config."""
+        config = self.validator.config
+
+        def api_key_validator(api_key: str = Depends(get_api_key)):
+            if not hasattr(config, "API_KEY") or not config.API_KEY:
+                return  # No API key configured, skip validation
+
+            if api_key != config.API_KEY:
+                raise HTTPException(status_code=403, detail="Invalid API Key")
+
+        return api_key_validator
+
     def register_routes(self) -> None:
         self.app.add_api_route(
             "/healthcheck",
@@ -30,12 +74,16 @@ class ValidatorAPI:
             tags=["healthcheck"],
         )
 
-        # Add monitoring endpoints
+        # Create API key dependency with config
+        api_key_dependency = self.get_api_key_dependency()
+
+        # Add monitoring endpoints with API key protection
         self.app.add_api_route(
             "/monitor/worker-registry",
             self.monitor_worker_registry,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         self.app.add_api_route(
@@ -43,6 +91,7 @@ class ValidatorAPI:
             self.monitor_routing_table,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         self.app.add_api_route(
@@ -50,6 +99,15 @@ class ValidatorAPI:
             self.monitor_telemetry,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
+            "/monitor/unregistered-tee-addresses",
+            self.monitor_unregistered_tee_addresses,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         self.app.add_api_route(
@@ -57,6 +115,7 @@ class ValidatorAPI:
             self.monitor_telemetry_by_hotkey,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         self.app.add_api_route(
@@ -64,6 +123,7 @@ class ValidatorAPI:
             self.monitor_worker_hotkey,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         # Add error monitoring endpoints
@@ -72,6 +132,7 @@ class ValidatorAPI:
             self.monitor_errors,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         self.app.add_api_route(
@@ -79,6 +140,7 @@ class ValidatorAPI:
             self.monitor_errors_by_hotkey,
             methods=["GET"],
             tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
         self.app.add_api_route(
@@ -86,6 +148,7 @@ class ValidatorAPI:
             self.cleanup_old_errors,
             methods=["POST"],
             tags=["maintenance"],
+            dependencies=[Depends(api_key_dependency)],
         )
 
     async def healthcheck(self):
@@ -231,3 +294,16 @@ class ValidatorAPI:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    async def monitor_unregistered_tee_addresses(self):
+        """Return all unregistered TEE addresses in the system"""
+        try:
+            addresses = (
+                self.validator.routing_table.get_all_unregistered_tee_addresses()
+            )
+            return {
+                "count": len(addresses),
+                "unregistered_tee_addresses": addresses,
+            }
+        except Exception as e:
+            return {"error": str(e)}
