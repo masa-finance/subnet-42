@@ -295,9 +295,24 @@ class NodeManager:
                         f"Retrieved TEE addresses for hotkey {hotkey}: {tee_addresses}"
                     )
 
-                    # Cleaning DB from addresses under this hotkey
-                    routing_table.clear_miner(hotkey=node.hotkey)
-                    logger.debug(f"Cleared existing addresses for hotkey {hotkey}")
+                    # Instead of clearing all entries, get current TEEs for this hotkey
+                    current_tees = routing_table.get_miner_addresses(hotkey=node.hotkey)
+                    logger.debug(
+                        f"Retrieved {len(current_tees) if current_tees else 0} current TEEs for {hotkey}"
+                    )
+
+                    # Create a set of current TEE addresses for comparison
+                    current_tee_urls = set()
+                    if current_tees:
+                        for address, worker_id in current_tees:
+                            current_tee_urls.add(address)
+
+                    logger.debug(
+                        f"Current TEE addresses for hotkey {hotkey}: {current_tee_urls}"
+                    )
+
+                    # Track successfully verified TEEs in this update
+                    verified_tees = set()
 
                     if tee_addresses:
                         for tee_address in tee_addresses.split(","):
@@ -425,6 +440,9 @@ class NodeManager:
                                     f"hotkey {hotkey}"
                                 )
 
+                                # Add to verified TEEs
+                                verified_tees.add(tee_address)
+
                                 # Check if this is a new worker registration (worker_id was not set before)
                                 if worker_hotkey is None:
                                     logger.info(
@@ -465,6 +483,30 @@ class NodeManager:
                             miner_address=f"{node.ip}:{node.port}",
                             message="No TEE addresses returned",
                         )
+
+                    # Remove only TEEs that were not verified in this update
+                    tees_to_remove = current_tee_urls - verified_tees
+                    if tees_to_remove:
+                        logger.info(
+                            f"Removing {len(tees_to_remove)} unresponsive TEEs for hotkey {hotkey}"
+                        )
+                        for tee_to_remove in tees_to_remove:
+                            logger.debug(
+                                f"Removing unresponsive TEE {tee_to_remove} for hotkey {hotkey}"
+                            )
+                            # Find the UID for this address
+                            for address, worker_id in current_tees:
+                                if address == tee_to_remove:
+                                    # Call remove_miner_address with the correct parameters (hotkey, uid)
+                                    routing_table.remove_miner_address(
+                                        hotkey=node.hotkey, uid=node.node_id
+                                    )
+                                    break
+
+                    logger.debug(
+                        f"Kept {len(verified_tees)} verified TEEs for hotkey {hotkey}"
+                    )
+
                 except Exception as e:
                     logger.error(
                         f"Error processing TEE addresses for hotkey {hotkey}: {e}"

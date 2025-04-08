@@ -14,3 +14,4 @@ class Config:
         "SUBTENSOR_ADDRESS", "wss://entrypoint-finney.opentensor.ai:443"
     )
     MINER_WHITELIST = os.getenv("MINER_WHITELIST", "").split(",")
+    API_KEY = os.getenv("API_KEY", None)
