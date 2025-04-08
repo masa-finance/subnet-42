@@ -70,3 +70,16 @@ class TelemetryStorage:
         except sqlite3.Error as e:
             logger.error(f"Failed to retrieve hotkeys with telemetry: {e}")
             return []
+
+    def delete_telemetry_by_hotkey(self, hotkey):
+        """
+        Delete all telemetry entries for a specific hotkey using the
+        TelemetryDatabase method.
+        """
+        try:
+            rows_deleted = self.db.delete_telemetry_by_hotkey(hotkey)
+            logger.info(f"Deleted {rows_deleted} telemetry entries for hotkey {hotkey}")
+            return rows_deleted
+        except sqlite3.Error as e:
+            logger.error(f"Failed to delete telemetry for hotkey {hotkey}: {e}")
+            return 0
