@@ -311,8 +311,6 @@ class Validator:
                 node.node_id: node.hotkey for node in self.metagraph.nodes.values()
             }
 
-            logger.info(f"UID TO HOTKEY: {uid_to_hotkey} {uids}")
-
             # 4. Format the scores for the API response - directly use raw scores from calculate_weights
             formatted_scores = [
                 {"hotkey": uid_to_hotkey.get(int(uid)), "score": float(score)}
