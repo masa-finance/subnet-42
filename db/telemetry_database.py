@@ -127,3 +127,16 @@ class TelemetryDatabase:
             )
             hotkeys = [row[0] for row in cursor.fetchall()]
             return hotkeys
+
+    def delete_telemetry_by_hotkey(self, hotkey):
+        """Delete all telemetry entries for a specific hotkey."""
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM telemetry WHERE hotkey = ?
+                """,
+                (hotkey,),
+            )
+            conn.commit()
+            return cursor.rowcount  # Return the number of rows deleted
