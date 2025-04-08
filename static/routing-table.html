@@ -330,7 +330,7 @@
             .then(response => response.json())
             .then(data => {
                 populateRoutingTable(data.miner_addresses);
-                updateRoutingStats(data.miner_addresses);
+                updateRoutingStats(data.miner_addresses, data.count);
                 updateNetworkVisualization(data.miner_addresses);
                 updateLastRefresh();
             })
@@ -370,7 +370,7 @@
                 const row = document.createElement('tr');
                 
                 // Randomly determine if route is connected (for demo)
-                const isConnected = Math.random() > 0.3;
+                const isConnected = true;
                 const statusClass = isConnected ? 'status-connected' : 'status-disconnected';
                 const statusText = isConnected ? 'Connected' : 'Disconnected';
                 
@@ -394,13 +394,13 @@
             addCopyListeners();
         }
         
-        function updateRoutingStats(routes) {
-            document.getElementById('total-routes').textContent = routes.length;
+        function updateRoutingStats(routes, count) {
+            document.getElementById('total-routes').textContent = count;
             
             // Randomly determine connected routes for demo purposes
-            const connectedCount = Math.floor(routes.length * 0.7);
+            const connectedCount = routes.length;
             document.getElementById('connected-routes').textContent = connectedCount;
-            document.getElementById('disconnected-routes').textContent = routes.length - connectedCount;
+            document.getElementById('disconnected-routes').textContent = count - connectedCount;
         }
         
         function updateNetworkVisualization(routes) {
@@ -450,16 +450,12 @@
                 line.style.transform = `rotate(${angle2}deg)`;
                 
                 // Random connection status
-                const isConnected = Math.random() > 0.3;
-                if (isConnected) {
-                    line.style.background = 'rgba(16, 185, 129, 0.3)';
-                    minerNode.style.background = 'var(--success-color)';
-                    minerNode.style.boxShadow = '0 0 10px var(--success-color)';
-                } else {
-                    line.style.background = 'rgba(239, 68, 68, 0.3)';
-                    minerNode.style.background = 'var(--danger-color)';
-                    minerNode.style.boxShadow = '0 0 10px var(--danger-color)';
-                }
+                // const isConnected = Math.random() > 0.3;
+
+                line.style.background = 'rgba(16, 185, 129, 0.3)';
+                minerNode.style.background = 'var(--success-color)';
+                minerNode.style.boxShadow = '0 0 10px var(--success-color)';
+
                 
                 container.appendChild(line);
             }

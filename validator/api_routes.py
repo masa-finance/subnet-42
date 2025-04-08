@@ -242,12 +242,26 @@ class ValidatorAPI:
         """Return all worker registrations (worker_id to hotkey mappings)"""
         try:
             registrations = self.validator.routing_table.get_all_worker_registrations()
+            worker_registrations = []
+
+            for worker_id, hotkey in registrations:
+                # Check if the worker is in the routing table (active)
+                miner_addresses = self.validator.routing_table.get_miner_addresses(
+                    hotkey
+                )
+                is_in_routing_table = len(miner_addresses) > 0
+
+                worker_registrations.append(
+                    {
+                        "worker_id": worker_id,
+                        "hotkey": hotkey,
+                        "is_in_routing_table": is_in_routing_table,
+                    }
+                )
+
             return {
                 "count": len(registrations),
-                "worker_registrations": [
-                    {"worker_id": worker_id, "hotkey": hotkey}
-                    for worker_id, hotkey in registrations
-                ],
+                "worker_registrations": worker_registrations,
             }
         except Exception as e:
             return {"error": str(e)}
@@ -256,8 +270,9 @@ class ValidatorAPI:
         """Return all miner addresses and their associated hotkeys"""
         try:
             addresses = self.validator.routing_table.get_all_addresses_with_hotkeys()
+            nodes_count = len(self.validator.metagraph.nodes)
             return {
-                "count": len(addresses),
+                "count": nodes_count,
                 "miner_addresses": [
                     {
                         "hotkey": hotkey,

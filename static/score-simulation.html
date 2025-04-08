@@ -222,7 +222,7 @@
     
         
         <div class="card chart-card" id="scatterCard" style="display: block;">
-            <h2>Scatter Plot Distribution (Sorted by Score - Highest First)</h2>
+            <h2>Scatter Plot Distribution (Sorted by Score - Lowest First)</h2>
             <div class="chart-container">
                 <canvas id="scatterChart"></canvas>
             </div>
@@ -396,8 +396,8 @@
             const ctx = document.getElementById('scatterChart');
             if (!ctx) return;
             
-            // Create dataset for scatter plot with pre-sorted scores
-            const sortedScores = scores.slice().sort((a, b) => b.score - a.score);
+            // Create dataset for scatter plot with pre-sorted scores (lowest to highest)
+            const sortedScores = scores.slice().sort((a, b) => a.score - b.score);
             const dataPoints = sortedScores.map((item, index) => ({
                 x: index + 1,  // Rank (1-based)
                 y: item.score, // Score for y-axis

@@ -196,7 +196,6 @@
             <table class="worker-table" id="worker-table">
                 <thead>
                     <tr>
-                        <th>Status</th>
                         <th>Worker ID</th>
                         <th>Hotkey</th>
                         <th>Last Seen</th>
@@ -276,7 +275,7 @@
             
             if (!workers || workers.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="5" style="text-align: center;">No workers registered</td>`;
+                row.innerHTML = `<td colspan="4" style="text-align: center;">No workers registered</td>`;
                 tableBody.appendChild(row);
                 return;
             }
@@ -293,29 +292,27 @@
             
             if (filteredWorkers.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="5" style="text-align: center;">No matching workers found</td>`;
+                row.innerHTML = `<td colspan="4" style="text-align: center;">No matching workers found</td>`;
                 tableBody.appendChild(row);
                 return;
             }
             
-            // Generate random last seen times for demo purposes
+            // For displaying last seen time
             const now = new Date();
             
             filteredWorkers.forEach(worker => {
                 const row = document.createElement('tr');
                 
-                // Randomly determine if worker is active (for demo)
-                const isActive = Math.random() > 0.3;
-                const statusClass = isActive ? 'status-active' : 'status-inactive';
-                const statusText = isActive ? 'Active' : 'Inactive';
-                
-                // Generate random last seen time between now and 3 days ago
-                const randomHours = Math.floor(Math.random() * 72);
-                const lastSeen = new Date(now.getTime() - randomHours * 60 * 60 * 1000);
-                const lastSeenStr = lastSeen.toLocaleString();
+                // Use the last seen time if provided, or generate a placeholder
+                let lastSeenStr = worker.last_seen || 'Unknown';
+                if (lastSeenStr === 'Unknown') {
+                    // Fallback to a generated time for demo purposes
+                    const randomHours = Math.floor(Math.random() * 72);
+                    const lastSeen = new Date(now.getTime() - randomHours * 60 * 60 * 1000);
+                    lastSeenStr = lastSeen.toLocaleString();
+                }
                 
                 row.innerHTML = `
-                    <td><span class="status-indicator ${statusClass}"></span>${statusText}</td>
                     <td class="monospace">${worker.worker_id}</td>
                     <td class="monospace">${worker.hotkey}</td>
                     <td>${lastSeenStr}</td>
@@ -331,8 +328,8 @@
         function updateWorkerStats(workers) {
             document.getElementById('total-workers').textContent = workers.length;
             
-            // Randomly determine active workers for demo purposes
-            const activeCount = Math.floor(workers.length * 0.7);
+            // Calculate active and inactive counts based on routing table presence
+            const activeCount = workers.filter(worker => worker.is_in_routing_table).length;
             document.getElementById('active-workers').textContent = activeCount;
             document.getElementById('inactive-workers').textContent = workers.length - activeCount;
         }
