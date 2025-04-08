@@ -1,5 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from typing import Optional, Callable
+import os
+from fiber.logging_utils import get_logger
+import datetime
+
+logger = get_logger(__name__)
 
 
 def get_api_key(api_key: Optional[str] = Header(None, alias="X-API-Key")) -> str:
@@ -55,18 +62,19 @@ class ValidatorAPI:
 
     def get_api_key_dependency(self) -> Callable:
         """Get a dependency function that checks the API key against config."""
-        config = self.validator.config
 
-        def api_key_validator(api_key: str = Depends(get_api_key)):
-            if not hasattr(config, "API_KEY") or not config.API_KEY:
-                return  # No API key configured, skip validation
+        def check_api_key():
+            return require_api_key(config=self.validator.config)
 
-            if api_key != config.API_KEY:
-                raise HTTPException(status_code=403, detail="Invalid API Key")
-
-        return api_key_validator
+        return check_api_key
 
     def register_routes(self) -> None:
+        # Mount static files directory
+        try:
+            self.app.mount("/static", StaticFiles(directory="static"), name="static")
+        except Exception as e:
+            logger.error(f"Failed to mount static files: {str(e)}, cwd: {os.getcwd()}")
+
         self.app.add_api_route(
             "/healthcheck",
             self.healthcheck,
@@ -148,6 +156,81 @@ class ValidatorAPI:
             self.cleanup_old_errors,
             methods=["POST"],
             tags=["maintenance"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add HTML page routes
+        self.app.add_api_route(
+            "/errors",
+            self.serve_error_logs_page,
+            methods=["GET"],
+            tags=["pages"],
+            response_class=HTMLResponse,
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
+            "/workers",
+            self.serve_worker_registry_page,
+            methods=["GET"],
+            tags=["pages"],
+            response_class=HTMLResponse,
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
+            "/routing",
+            self.serve_routing_table_page,
+            methods=["GET"],
+            tags=["pages"],
+            response_class=HTMLResponse,
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
+            "/unregistered-nodes",
+            self.serve_unregistered_nodes_page,
+            methods=["GET"],
+            tags=["pages"],
+            response_class=HTMLResponse,
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add dashboard endpoint
+        self.app.add_api_route(
+            "/dashboard",
+            self.dashboard,
+            methods=["GET"],
+            tags=["dashboard"],
+            response_class=HTMLResponse,
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add JSON API endpoint for dashboard data
+        self.app.add_api_route(
+            "/dashboard/data",
+            self.dashboard_data,
+            methods=["GET"],
+            tags=["dashboard"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add JSON API endpoint for score simulation data
+        self.app.add_api_route(
+            "/score-simulation/data",
+            self.score_simulation_data,
+            methods=["GET"],
+            tags=["simulation"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add Score Simulation HTML Page Route
+        self.app.add_api_route(
+            "/score-simulation",
+            self.serve_score_simulation_page,
+            methods=["GET"],
+            tags=["pages"],
+            response_class=HTMLResponse,
             dependencies=[Depends(api_key_dependency)],
         )
 
@@ -306,4 +389,111 @@ class ValidatorAPI:
                 "unregistered_tee_addresses": addresses,
             }
         except Exception as e:
+            return {"error": str(e)}
+
+    async def dashboard(self):
+        # Implement the dashboard logic for the validator
+        return self.validator.dashboard()
+
+    async def dashboard_data(self):
+        # Implement the dashboard data logic for the validator
+        return self.validator.dashboard_data()
+
+    async def serve_error_logs_page(self):
+        """Serve the error logs HTML page"""
+        try:
+            with open("static/error-logs.html", "r") as f:
+                content = f.read()
+
+            # Replace placeholders with actual values
+            network = self.validator.config.SUBTENSOR_NETWORK.upper()
+            content = content.replace("{{network}}", network)
+            content = content.replace(
+                "{{current_year}}", str(datetime.datetime.now().year)
+            )
+
+            return HTMLResponse(content=content)
+        except Exception as e:
+            logger.error(f"Failed to serve error logs page: {str(e)}")
+            return HTMLResponse(content=f"<html><body>Error: {str(e)}</body></html>")
+
+    async def serve_worker_registry_page(self):
+        """Serve the worker registry HTML page"""
+        try:
+            with open("static/worker-registry.html", "r") as f:
+                content = f.read()
+
+            # Replace placeholders with actual values
+            network = self.validator.config.SUBTENSOR_NETWORK.upper()
+            content = content.replace("{{network}}", network)
+            content = content.replace(
+                "{{current_year}}", str(datetime.datetime.now().year)
+            )
+
+            return HTMLResponse(content=content)
+        except Exception as e:
+            logger.error(f"Failed to serve worker registry page: {str(e)}")
+            return HTMLResponse(content=f"<html><body>Error: {str(e)}</body></html>")
+
+    async def serve_routing_table_page(self):
+        """Serve the routing table HTML page"""
+        try:
+            with open("static/routing-table.html", "r") as f:
+                content = f.read()
+
+            # Replace placeholders with actual values
+            network = self.validator.config.SUBTENSOR_NETWORK.upper()
+            content = content.replace("{{network}}", network)
+            content = content.replace(
+                "{{current_year}}", str(datetime.datetime.now().year)
+            )
+
+            return HTMLResponse(content=content)
+        except Exception as e:
+            logger.error(f"Failed to serve routing table page: {str(e)}")
+            return HTMLResponse(content=f"<html><body>Error: {str(e)}</body></html>")
+
+    async def serve_unregistered_nodes_page(self):
+        """Serve the unregistered nodes HTML page"""
+        try:
+            with open("static/unregistered-nodes.html", "r") as f:
+                content = f.read()
+
+            # Replace placeholders with actual values
+            network = self.validator.config.SUBTENSOR_NETWORK.upper()
+            content = content.replace("{{network}}", network)
+            content = content.replace(
+                "{{current_year}}", str(datetime.datetime.now().year)
+            )
+
+            return HTMLResponse(content=content)
+        except Exception as e:
+            logger.error(f"Failed to serve unregistered nodes page: {str(e)}")
+            return HTMLResponse(content=f"<html><body>Error: {str(e)}</body></html>")
+
+    async def serve_score_simulation_page(self):
+        """Serve the score simulation HTML page"""
+        try:
+            with open("static/score-simulation.html", "r") as f:
+                content = f.read()
+
+            # Replace placeholders with actual values
+            network = self.validator.config.SUBTENSOR_NETWORK.upper()
+            content = content.replace("{{network}}", network)
+            content = content.replace(
+                "{{current_year}}", str(datetime.datetime.now().year)
+            )
+
+            return HTMLResponse(content=content)
+        except Exception as e:
+            logger.error(f"Failed to serve score simulation page: {str(e)}")
+            return HTMLResponse(content=f"<html><body>Error: {str(e)}</body></html>")
+
+    async def score_simulation_data(self):
+        """Return JSON data for score simulation based on telemetry"""
+        try:
+            data = await self.validator.get_score_simulation_data()
+            return data
+        except Exception as e:
+            logger.error(f"Failed to get score simulation data: {str(e)}")
             return {"error": str(e)}
