@@ -351,7 +351,9 @@ class NodeManager:
                                 )
 
                                 telemetry_result = (
-                                    await telemetry_client.execute_telemetry_sequence()
+                                    await telemetry_client.execute_telemetry_sequence(
+                                        routing_table=routing_table
+                                    )
                                 )
 
                                 if not telemetry_result:
