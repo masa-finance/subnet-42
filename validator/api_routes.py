@@ -271,6 +271,7 @@ class ValidatorAPI:
         try:
             addresses = self.validator.routing_table.get_all_addresses_with_hotkeys()
             nodes_count = len(self.validator.metagraph.nodes)
+
             return {
                 "count": nodes_count,
                 "miner_addresses": [
