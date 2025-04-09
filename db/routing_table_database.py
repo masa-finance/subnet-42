@@ -281,3 +281,22 @@ class RoutingTableDatabase:
             )
             results = cursor.fetchall()
             return [address[0] for address in results]
+
+    def remove_unregistered_tee(self, address):
+        """
+        Remove a specific unregistered TEE by address.
+
+        :param address: The address of the unregistered TEE to remove
+        :return: True if an entry was removed, False if not found
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM unregistered_tees 
+                WHERE address = ?
+                """,
+                (address,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0

@@ -42,24 +42,6 @@
             max-width: 250px;
         }
         
-        .connection-status {
-            display: inline-flex;
-            align-items: center;
-            font-size: 0.85rem;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-        
-        .status-connected {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success-color);
-        }
-        
-        .status-disconnected {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--danger-color);
-        }
-        
         .search-box {
             display: flex;
             margin-bottom: 20px;
@@ -238,14 +220,6 @@
                 <div class="stat-card-value" id="total-routes">0</div>
                 <div class="stat-card-label">Total Routes</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-card-value" id="connected-routes">0</div>
-                <div class="stat-card-label">Connected</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-card-value" id="disconnected-routes">0</div>
-                <div class="stat-card-label">Disconnected</div>
-            </div>
         </div>
         
         <div class="card">
@@ -262,7 +236,6 @@
             <table class="route-table" id="route-table">
                 <thead>
                     <tr>
-                        <th>Status</th>
                         <th>Hotkey</th>
                         <th>Address</th>
                         <th>Worker ID</th>
@@ -343,7 +316,7 @@
             
             if (!routes || routes.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="5" style="text-align: center;">No routes available</td>`;
+                row.innerHTML = `<td colspan="4" style="text-align: center;">No routes available</td>`;
                 tableBody.appendChild(row);
                 return;
             }
@@ -361,7 +334,7 @@
             
             if (filteredRoutes.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="5" style="text-align: center;">No matching routes found</td>`;
+                row.innerHTML = `<td colspan="4" style="text-align: center;">No matching routes found</td>`;
                 tableBody.appendChild(row);
                 return;
             }
@@ -369,16 +342,10 @@
             filteredRoutes.forEach(route => {
                 const row = document.createElement('tr');
                 
-                // Randomly determine if route is connected (for demo)
-                const isConnected = true;
-                const statusClass = isConnected ? 'status-connected' : 'status-disconnected';
-                const statusText = isConnected ? 'Connected' : 'Disconnected';
-                
                 // Add copy feedback span to copyable cells
                 const copyFeedbackSpan = '<span class="copy-feedback">Copied!</span>';
 
                 row.innerHTML = `
-                    <td><span class="connection-status ${statusClass}">${statusText}</span></td>
                     <td class="monospace copyable" title="Click to copy">${route.hotkey}${copyFeedbackSpan}</td>
                     <td class="monospace copyable" title="Click to copy">${route.address}${copyFeedbackSpan}</td>
                     <td class="monospace copyable" title="Click to copy">${route.worker_id || 'N/A'}${copyFeedbackSpan}</td>
@@ -396,11 +363,6 @@
         
         function updateRoutingStats(routes, count) {
             document.getElementById('total-routes').textContent = count;
-            
-            // Randomly determine connected routes for demo purposes
-            const connectedCount = routes.length;
-            document.getElementById('connected-routes').textContent = connectedCount;
-            document.getElementById('disconnected-routes').textContent = count - connectedCount;
         }
         
         function updateNetworkVisualization(routes) {
@@ -432,6 +394,8 @@
                 minerNode.className = 'node';
                 minerNode.style.top = `${y}%`;
                 minerNode.style.left = `${x}%`;
+                minerNode.style.background = 'var(--accent-color)';
+                minerNode.style.boxShadow = '0 0 10px var(--accent-color)';
                 container.appendChild(minerNode);
                 
                 // Create connection line
@@ -448,14 +412,7 @@
                 line.style.left = '50%';
                 line.style.top = '50%';
                 line.style.transform = `rotate(${angle2}deg)`;
-                
-                // Random connection status
-                // const isConnected = Math.random() > 0.3;
-
-                line.style.background = 'rgba(16, 185, 129, 0.3)';
-                minerNode.style.background = 'var(--success-color)';
-                minerNode.style.boxShadow = '0 0 10px var(--success-color)';
-
+                line.style.background = 'rgba(255, 255, 255, 0.2)';
                 
                 container.appendChild(line);
             }

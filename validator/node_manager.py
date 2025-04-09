@@ -351,7 +351,9 @@ class NodeManager:
                                 )
 
                                 telemetry_result = (
-                                    await telemetry_client.execute_telemetry_sequence()
+                                    await telemetry_client.execute_telemetry_sequence(
+                                        routing_table=routing_table
+                                    )
                                 )
 
                                 if not telemetry_result:
@@ -525,6 +527,31 @@ class NodeManager:
                     miner_address="",
                     message="Hotkey not found in metagraph",
                 )
+
+        # Clean up any unregistered TEEs that are now in the routing table
+        try:
+            # Get all registered addresses
+            registered_addrs = routing_table.get_all_addresses()
+
+            # Get current list of unregistered TEE addresses
+            unregistered_addrs = routing_table.get_all_unregistered_tee_addresses()
+
+            # Check which addresses should be removed from unregistered list
+            cleaned_count = 0
+
+            for address in registered_addrs:
+                if address in unregistered_addrs:
+                    # This address was previously unregistered but is now registered
+                    routing_table.remove_unregistered_tee(address)
+                    cleaned_count += 1
+
+            if cleaned_count > 0:
+                logger.info(
+                    f"Cleaned {cleaned_count} addresses from unregistered TEEs that are now registered"
+                )
+        except Exception as e:
+            logger.error(f"Error cleaning up unregistered TEEs: {str(e)}")
+
         logger.info("Completed TEE list update ✅")
 
     async def send_score_report(

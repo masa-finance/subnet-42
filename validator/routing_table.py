@@ -186,3 +186,17 @@ class RoutingTable:
         except sqlite3.Error as e:
             logger.error(f"Failed to get unregistered TEE addresses: {e}")
             return []
+
+    def remove_unregistered_tee(self, address):
+        """Remove a specific unregistered TEE by address."""
+        try:
+            logger.info(f"Removing unregistered TEE: address={address}")
+            result = self.db.remove_unregistered_tee(address)
+            if result:
+                logger.debug(f"Successfully removed unregistered TEE: {address}")
+            else:
+                logger.debug(f"No unregistered TEE found with address: {address}")
+            return result
+        except sqlite3.Error as e:
+            logger.error(f"Failed to remove unregistered TEE: {e}")
+            return False

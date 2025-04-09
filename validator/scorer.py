@@ -57,7 +57,9 @@ class NodeDataScorer:
 
                 logger.info(f"Executing telemetry sequence for node {hotkey[:10]}...")
                 logger.debug(f"Executing telemetry sequence for node {hotkey}")
-                telemetry_result = await telemetry_client.execute_telemetry_sequence()
+                telemetry_result = await telemetry_client.execute_telemetry_sequence(
+                    routing_table=self.validator.routing_table
+                )
 
                 if telemetry_result:
                     successful_nodes += 1
