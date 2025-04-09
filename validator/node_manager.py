@@ -156,7 +156,8 @@ class NodeManager:
             for node in available_nodes:
 
                 if node.ip == "0":
-                    logger.warn(f"Skipping node {node.hotkey}: ip is {node.ip}")
+                    if os.getenv("DEBUG", "false").lower() == "true":
+                        logger.warn(f"Skipping node {node.hotkey}: ip is {node.ip}")
                     self.errors_storage.add_error(
                         hotkey=node.hotkey,
                         tee_address="",
@@ -217,7 +218,9 @@ class NodeManager:
         """
         try:
             if node_hotkey not in self.connected_nodes:
-                logger.warning(f"No connected node found for hotkey {node_hotkey}")
+                logger.debug(
+                    f"Warning: No connected node found for hotkey {node_hotkey}"
+                )
                 self.errors_storage.add_error(
                     hotkey=node_hotkey,
                     tee_address="",

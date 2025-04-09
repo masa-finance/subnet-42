@@ -126,9 +126,10 @@ class TEETelemetryClient:
 
                 return result
             except Exception as e:
-                logger.error(
-                    f"Error in telemetry sequence: {self.tee_worker_address} {e}"
-                )
+                if os.getenv("DEBUG", "false").lower() == "true":
+                    logger.warning(
+                        f"Error in telemetry sequence: {self.tee_worker_address} {e}"
+                    )
                 retries += 1
                 logger.debug(
                     f"Retrying... {self.tee_worker_address} ({retries}/{max_retries})"
