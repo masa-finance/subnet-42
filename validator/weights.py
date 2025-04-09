@@ -369,10 +369,8 @@ class WeightsManager:
         weights = [float(miner_scores[uid]) for uid in uids]
 
         logger.info(f"Completed weight calculation for {len(uids)} nodes")
-        logger.info(f"UIDs: {uids}")
-        logger.info(f"weights: {weights}")
-
-        logger.info(f"Weights: {[f'{w:.4f}' for w in weights]}")
+        logger.debug(f"UIDs: {uids}")
+        logger.debug(f"weights: {weights}")
 
         return uids, weights
 
@@ -434,8 +432,9 @@ class WeightsManager:
                 )
 
                 if success:
-                    logger.info(f"UIDS: {uids}")
-                    logger.info(f"Scores: {scores}")
+
+                    logger.debug(f"UIDS: {uids}")
+                    logger.debug(f"Scores: {scores}")
                     logger.info("✅ Successfully set weights!")
                     return
                 else:
