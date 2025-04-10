@@ -42,7 +42,7 @@ WEIGHTS_LOOP_CADENCE_SECONDS = (
     TIME_PER_WEIGHT_SETTING / 2
 )  # half of a weight setting period
 
-SYNC_LOOP_CADENCE_SECONDS = 10
+SYNC_LOOP_CADENCE_SECONDS = 120
 
 
 class Validator:
@@ -95,7 +95,9 @@ class Validator:
             asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
             )
-            asyncio.create_task(self.background_tasks.set_weights_loop(60))
+            asyncio.create_task(
+                self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
+            )
 
             asyncio.create_task(
                 self.background_tasks.update_tee(
@@ -106,7 +108,7 @@ class Validator:
             # Start telemetry collection in its own task
             asyncio.create_task(
                 self.background_tasks.telemetry_loop(
-                    int(os.getenv("TELEMETRY_COLLECTION_CADENCE_SECONDS", "30"))
+                    int(os.getenv("TELEMETRY_COLLECTION_CADENCE_SECONDS", "120"))
                 )
             )
 
