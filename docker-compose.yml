@@ -78,5 +78,5 @@ services:
       sed -i 's/Port 8888/Port 3128/g' /etc/tinyproxy/tinyproxy.conf &&
       service tinyproxy restart &&
       iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
-      openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache"
+      openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3"
     restart: unless-stopped
