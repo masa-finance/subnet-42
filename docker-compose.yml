@@ -47,6 +47,8 @@ services:
     # Remove network_mode: host to allow direct port binding
     volumes:
       - ./.env:/home/masa/.env
+      - ./geeeeeeemoney_twitter_cookies.json:/home/masa/geeeeeeemoney_twitter_cookies.json
+
     depends_on:
       - vpn
     logging:
