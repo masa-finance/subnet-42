@@ -53,8 +53,8 @@ services:
   expressvpn:
       build:
         context: ./expressvpn
+        dockerfile: Dockerfile.vpn
       container_name: expressvpn
-      dockerfile: Dockerfile.vpn
       env_file:
         - .env
       cap_add:
