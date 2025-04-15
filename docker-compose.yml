@@ -3,7 +3,7 @@ services:
     profiles: ["miner", "validator"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
-    container_name: ${ROLE:-miner}  # Will be "miner" or "validator" based on ROLE env var
+    container_name: ${ROLE:-miner}
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,8 +14,6 @@ services:
     ports:
       - "${VALIDATOR_PORT:-8092}:8092"
       - "${MINER_PORT:-8091}:8091"
-    # volumes:
-    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     environment:
       - ROLE=${ROLE:-miner}
       - WALLET_NAME=${WALLET_NAME:-default}
@@ -30,27 +28,30 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  worker:
-    profiles: ["miner"]
-    image: masaengineering/tee-worker:main
-    pull_policy: always
-    container_name: worker
-    environment:
-      - ROLE=validator
-    devices:
-      - /dev/sgx_enclave
-      - /dev/sgx_provision
-    # Keep using the VPN's network
-    network_mode: "service:vpn"
-    depends_on:
-      - vpn
-    volumes:
-      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+worker:
+  profiles: ["miner"]
+  image: masaengineering/tee-worker:main
+  pull_policy: always
+  container_name: worker
+  ports:
+    - "8080:8080"
+  environment:
+    - ROLE=validator
+  devices:
+    - /dev/sgx_enclave
+    - /dev/sgx_provision
+  depends_on:
+    - vpn
+  volumes:
+    - ./.env:/home/masa/.env
+    - ./setup-routes.sh:/setup-routes.sh
+  entrypoint: >
+    /bin/bash -c "/setup-routes.sh & /home/masa/entrypoint.sh"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
   vpn:
     profiles: ["miner", "test"]
@@ -60,16 +61,21 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun
-    # Add port mapping here
-    ports:
-      - "8080:8080"
     volumes:
       - ./expressvpn/config:/etc/openvpn/config
     command: >
       bash -c "apt-get update && 
-      apt-get install -y openvpn curl iptables && 
-      echo 'net.ipv4.ip_forward=1' > /etc/sysctl.conf && 
-      sysctl -p && 
-      iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE && 
-      openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache"
+      apt-get install -y openvpn curl iptables &&
+      echo 'net.ipv4.ip_forward=1' > /etc/sysctl.conf &&
+      sysctl -p &&
+      iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
+      openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache &
+      OPENVPN_PID=$! &&
+      sleep 10 &&
+      echo 'Creating route to forward worker traffic through VPN...' &&
+      IP_ADDRESS=$(hostname -i) &&
+      echo 'VPN container IP: '$IP_ADDRESS &&
+      echo 'Setting up iptables for container routing...' &&
+      iptables -t nat -A PREROUTING -p tcp -m tcp -d $IP_ADDRESS --dport 1234 -j DNAT --to-destination 8.8.8.8:53 &&
+      wait $OPENVPN_PID"
     restart: unless-stopped
