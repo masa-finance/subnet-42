@@ -41,9 +41,9 @@ services:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     # network_mode: host
-    network_mode: "service:expressvpn"
+    network_mode: "service:vpn"
     depends_on:
-      - expressvpn
+      - vpn
     volumes:
       - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
     logging:
