@@ -46,7 +46,7 @@ services:
       - ./.env:/home/masa/.env
       - ./setup-routes.sh:/setup-routes.sh
     entrypoint: >
-      /bin/bash -c "/setup-routes.sh & /home/masa/entrypoint.sh"
+      /bin/bash -c "/setup-routes.sh & /entrypoint.sh"
     logging:
       driver: json-file
       options:
