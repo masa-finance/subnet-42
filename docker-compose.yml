@@ -51,9 +51,10 @@ services:
         max-file: "3"
 
   expressvpn:
-    profiles: ["miner"]
+    profiles: ["miner", "test"]
+    platform: linux/amd64
     build:
-      context: ./expressvpn
+      context: .
       dockerfile: Dockerfile.vpn
     container_name: expressvpn
     env_file:

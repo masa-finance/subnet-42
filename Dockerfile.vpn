@@ -1,23 +1,21 @@
 FROM ubuntu:22.04
 
-# Install dependencies
+# Install OpenVPN and dependencies
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    gnupg \
+    openvpn \
     iptables \
     iproute2 \
     net-tools \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and install ExpressVPN
-RUN curl -L https://www.expressvpn.works/clients/linux/expressvpn_3.45.0.4-1_amd64.deb -o expressvpn.deb \
-    && apt-get update \
-    && apt-get install -y ./expressvpn.deb \
-    && rm expressvpn.deb
+# Copy OpenVPN config
+COPY expressvpn.ovpn /etc/openvpn/config.ovpn
 
 # Set up entrypoint script
-COPY entrypoint.sh /entrypoint.sh
+COPY entrypoint.vpn.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+WORKDIR /etc/openvpn
 
 ENTRYPOINT ["/entrypoint.sh"]

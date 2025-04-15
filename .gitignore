@@ -20,3 +20,5 @@ data/*
 *.pyc
 notebooks/.DS_Store
 .conda
+
+expressvpn.ovpn
