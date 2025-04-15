@@ -3,6 +3,7 @@ services:
     profiles: ["miner", "validator"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
+    container_name: ${ROLE:-miner}  # Will be "miner" or "validator" based on ROLE env var
     build:
       context: .
       dockerfile: Dockerfile
@@ -33,6 +34,7 @@ services:
     profiles: ["miner"]
     image: masaengineering/tee-worker:main
     pull_policy: always
+    container_name: worker
     environment:
       - ROLE=validator
     devices:
@@ -53,7 +55,7 @@ services:
   vpn:
     profiles: ["miner", "test"]
     image: ubuntu:22.04
-    container_name: expressvpn
+    container_name: vpn
     cap_add:
       - NET_ADMIN
     devices:
