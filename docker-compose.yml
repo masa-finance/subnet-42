@@ -35,26 +35,17 @@ services:
     image: masaengineering/tee-worker:main
     pull_policy: always
     container_name: worker
-    ports:
-      - "8080:8080"  # Expose port 8080 directly
     environment:
       - ROLE=validator
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
-    # Remove the network_mode line
+    # Keep using the VPN's network
+    network_mode: "service:vpn"
     depends_on:
       - vpn
     volumes:
-      - ./.env:/home/masa/.env
-    # Add this to set up routing through the VPN for outbound traffic
-    entrypoint: >
-      /bin/bash -c "
-      apt-get update && 
-      apt-get install -y iproute2 && 
-      ip route del default || true && 
-      ip route add default via $(getent hosts vpn | awk '{ print $1 }') && 
-      /home/masa/entrypoint.sh"
+      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
     logging:
       driver: json-file
       options:
@@ -69,15 +60,16 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun
+    # Add port mapping here
+    ports:
+      - "8080:8080"
     volumes:
       - ./expressvpn/config:/etc/openvpn/config
     command: >
       bash -c "apt-get update && 
-      apt-get install -y openvpn curl iptables net-tools && 
+      apt-get install -y openvpn curl iptables && 
       echo 'net.ipv4.ip_forward=1' > /etc/sysctl.conf && 
       sysctl -p && 
       iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE && 
-      iptables -A FORWARD -i eth0 -o tun0 -j ACCEPT && 
-      iptables -A FORWARD -i tun0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT && 
       openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache"
     restart: unless-stopped
