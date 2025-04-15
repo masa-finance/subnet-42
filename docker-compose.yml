@@ -51,14 +51,14 @@ services:
         max-file: "3"
 
   expressvpn:
-      build:
-        context: ./expressvpn
-        dockerfile: Dockerfile.vpn
-      container_name: expressvpn
-      env_file:
-        - .env
-      cap_add:
-        - NET_ADMIN
-      devices:
-        - /dev/net/tun
-      restart: unless-stopped
+    build:
+      context: ./expressvpn
+      dockerfile: Dockerfile.vpn
+    container_name: expressvpn
+    env_file:
+      - .env
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    restart: unless-stopped
