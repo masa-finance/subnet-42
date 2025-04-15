@@ -28,30 +28,30 @@ services:
         max-size: "10m"
         max-file: "3"
 
-worker:
-  profiles: ["miner"]
-  image: masaengineering/tee-worker:main
-  pull_policy: always
-  container_name: worker
-  ports:
-    - "8080:8080"
-  environment:
-    - ROLE=validator
-  devices:
-    - /dev/sgx_enclave
-    - /dev/sgx_provision
-  depends_on:
-    - vpn
-  volumes:
-    - ./.env:/home/masa/.env
-    - ./setup-routes.sh:/setup-routes.sh
-  entrypoint: >
-    /bin/bash -c "/setup-routes.sh & /home/masa/entrypoint.sh"
-  logging:
-    driver: json-file
-    options:
-      max-size: "10m"
-      max-file: "3"
+  worker:
+    profiles: ["miner"]
+    image: masaengineering/tee-worker:main
+    pull_policy: always
+    container_name: worker
+    ports:
+      - "8080:8080"
+    environment:
+      - ROLE=validator
+    devices:
+      - /dev/sgx_enclave
+      - /dev/sgx_provision
+    depends_on:
+      - vpn
+    volumes:
+      - ./.env:/home/masa/.env
+      - ./setup-routes.sh:/setup-routes.sh
+    entrypoint: >
+      /bin/bash -c "/setup-routes.sh & /home/masa/entrypoint.sh"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   vpn:
     profiles: ["miner", "test"]
