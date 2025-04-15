@@ -52,15 +52,16 @@ services:
 
   expressvpn:
     profiles: ["miner", "test"]
-    platform: linux/amd64
-    build:
-      context: .
-      dockerfile: Dockerfile.vpn
+    image: ubuntu:22.04
     container_name: expressvpn
-    env_file:
-      - .env
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun
+    volumes:
+      - ./expressvpn/config:/etc/openvpn/config
+    command: >
+      bash -c "apt-get update && 
+      apt-get install -y openvpn curl && 
+      openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache"
     restart: unless-stopped
