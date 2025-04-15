@@ -38,7 +38,10 @@ services:
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
-    network_mode: host
+    # network_mode: host
+    network_mode: "service:expressvpn"
+    depends_on:
+      - expressvpn
     volumes:
       - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
     logging:
@@ -46,3 +49,16 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  expressvpn:
+      build:
+        context: ./expressvpn
+      container_name: expressvpn
+      dockerfile: Dockerfile.vpn
+      env_file:
+        - .env
+      cap_add:
+        - NET_ADMIN
+      devices:
+        - /dev/net/tun
+      restart: unless-stopped
