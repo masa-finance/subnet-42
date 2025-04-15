@@ -45,6 +45,7 @@ services:
     volumes:
       - ./.env:/home/masa/.env
       - ./setup-routes.sh:/setup-routes.sh
+      - ./entrypoint.sh:/entrypoint.sh
     entrypoint: >
       /bin/bash -c "/setup-routes.sh & /entrypoint.sh"
     logging:
