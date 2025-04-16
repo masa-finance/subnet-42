@@ -21,6 +21,6 @@ data/*
 notebooks/.DS_Store
 .conda
 
-expressvpn.ovpn
+config.ovpn
 auth.txt
-geeeeeeemoney_twitter_cookies.json
+cookies.json

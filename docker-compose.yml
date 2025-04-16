@@ -1,6 +1,6 @@
 services:
   neuron:
-    profiles: ["miner", "validator"]
+    profiles: ["miner", "miner-vpn", "validator"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
     container_name: ${ROLE:-miner}
@@ -29,12 +29,31 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
+  
   worker:
     profiles: ["miner"]
     image: masaengineering/tee-worker:main
     pull_policy: always
     container_name: worker
+    environment:
+      - ROLE=validator
+    devices:
+      - /dev/sgx_enclave
+      - /dev/sgx_provision
+    network_mode: host
+    volumes:
+      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker-vpn:
+    profiles: ["miner-vpn"]
+    image: masaengineering/tee-worker:main
+    pull_policy: always
+    container_name: worker-vpn
     ports:
       - "8080:8080"
     environment:
@@ -44,11 +63,11 @@ services:
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
-    # Remove network_mode: host to allow direct port binding
     volumes:
       - ./.env:/home/masa/.env
-      - ./geeeeeeemoney_twitter_cookies.json:/home/masa/geeeeeeemoney_twitter_cookies.json
-
+      # TODO: update to your twitter username this to the actual username
+      # TODO: you can add as many cookie files as you want, each for a different twitter account
+      - ./cookies.json:/home/masa/<username>_twitter_cookies.json
     depends_on:
       - vpn
     logging:
@@ -58,7 +77,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner", "test"]
+    profiles: ["miner-vpn"]
     image: ubuntu:22.04
     container_name: vpn
     cap_add:
@@ -68,7 +87,8 @@ services:
     ports:
       - "3128:3128"
     volumes:
-      - ./expressvpn/config:/etc/openvpn/config
+      - ./config.ovpn:/etc/openvpn/config/config.ovpn
+      - ./auth.txt:/etc/openvpn/config/auth.txt
     command: >
       bash -c "apt-get update && 
       apt-get install -y openvpn curl iptables tinyproxy &&
@@ -78,5 +98,5 @@ services:
       sed -i 's/Port 8888/Port 3128/g' /etc/tinyproxy/tinyproxy.conf &&
       service tinyproxy restart &&
       iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
-      openvpn --config /etc/openvpn/config/expressvpn.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3"
+      openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3"
     restart: unless-stopped
