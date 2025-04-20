@@ -12,7 +12,7 @@ services:
           value: "true"
     ports:
       - "${VALIDATOR_PORT:-8090}:8090"
-      - "${MINER_PORT:-8091}:8091"
+      - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
     # volumes:
     #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     environment:
