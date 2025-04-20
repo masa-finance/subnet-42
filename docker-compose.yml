@@ -3,7 +3,6 @@ services:
     profiles: ["miner", "miner-vpn", "validator"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
-    container_name: neuron
     build:
       context: .
       dockerfile: Dockerfile
@@ -40,7 +39,6 @@ services:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     network_mode: host
-    container_name: worker
     volumes:
       - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
     logging:
@@ -53,21 +51,19 @@ services:
     profiles: ["miner-vpn"]
     image: masaengineering/tee-worker:main
     pull_policy: always
-    container_name: worker-vpn
     ports:
-      - "8080:8080"
+      - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
       - ROLE=validator
-      - http_proxy=http://vpn:3128
-      - https_proxy=http://vpn:3128
+      - http_proxy=http://vpn:${VPN_PORT:-3128}
+      - https_proxy=http://vpn:${VPN_PORT:-3128}
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      # TODO: update to your twitter username this to the actual username
-      # TODO: you can add as many cookie files as you want, each for a different twitter account
-      - ./cookies.json:/home/masa/<username>_twitter_cookies.json
+      # Mount Twitter cookies file using the username from TWITTER_ACCOUNTS
+      - ./cookies.json:/home/masa/${TWITTER_ACCOUNTS%%:*}_twitter_cookies.json
     depends_on:
       - vpn
     logging:
@@ -79,13 +75,12 @@ services:
   vpn:
     profiles: ["miner-vpn"]
     image: ubuntu:22.04
-    container_name: vpn
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun
     ports:
-      - "3128:3128"
+      - "${VPN_PORT:-3128}:3128"
     volumes:
       - ./config.ovpn:/etc/openvpn/config/config.ovpn
       - ./auth.txt:/etc/openvpn/config/auth.txt
@@ -95,7 +90,7 @@ services:
       echo 'net.ipv4.ip_forward=1' > /etc/sysctl.conf &&
       sysctl -p &&
       echo 'Allow 0.0.0.0/0' >> /etc/tinyproxy/tinyproxy.conf &&
-      sed -i 's/Port 8888/Port 3128/g' /etc/tinyproxy/tinyproxy.conf &&
+      sed -i 's/Port 8888/Port ${VPN_PORT:-3128}/g' /etc/tinyproxy/tinyproxy.conf &&
       service tinyproxy restart &&
       iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
       openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3"
