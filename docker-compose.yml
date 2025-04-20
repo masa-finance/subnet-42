@@ -3,6 +3,7 @@ services:
     profiles: ["miner", "miner-vpn", "validator"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
+    container_name: neuron
     build:
       context: .
       dockerfile: Dockerfile
@@ -39,6 +40,7 @@ services:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     network_mode: host
+    container_name: worker
     volumes:
       - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
     logging:
@@ -51,6 +53,7 @@ services:
     profiles: ["miner-vpn"]
     image: masaengineering/tee-worker:main
     pull_policy: always
+    container_name: worker-vpn
     ports:
       - "8080:8080"
     environment:
@@ -76,6 +79,7 @@ services:
   vpn:
     profiles: ["miner-vpn"]
     image: ubuntu:22.04
+    container_name: vpn
     cap_add:
       - NET_ADMIN
     devices:
