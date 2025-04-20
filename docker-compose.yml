@@ -63,7 +63,7 @@ services:
     volumes:
       - ./.env:/home/masa/.env
       # Mount Twitter cookies file using the username from TWITTER_ACCOUNTS
-      - ./cookies.json:/home/masa/${TWITTER_ACCOUNTS%%:*}_twitter_cookies.json
+      - ./cookies.json:/home/masa/$${TWITTER_ACCOUNTS%%:*}_twitter_cookies.json
     depends_on:
       - vpn
     logging:
