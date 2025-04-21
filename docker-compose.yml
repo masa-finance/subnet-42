@@ -1,20 +1,21 @@
+version: '3'
+
 services:
   neuron:
     profiles: ["miner", "miner-vpn", "validator"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
-    build:
-      context: .
-      dockerfile: Dockerfile
-      x-bake:
-        when:
-          variable: BUILD_LOCAL
-          value: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 1.5G
+        reservations:
+          cpus: '0.2'
+          memory: 1G
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
-    # volumes:
-    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     environment:
       - ROLE=${ROLE:-miner}
       - WALLET_NAME=${WALLET_NAME:-default}
@@ -33,6 +34,14 @@ services:
     profiles: ["miner"]
     image: masaengineering/tee-worker:main
     pull_policy: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 1.5G
+        reservations:
+          cpus: '0.2'
+          memory: 1G
     environment:
       - ROLE=validator
     devices:
@@ -40,7 +49,7 @@ services:
       - /dev/sgx_provision
     network_mode: host
     volumes:
-      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
+      - ./.env:/home/masa/.env
     logging:
       driver: json-file
       options:
@@ -51,6 +60,14 @@ services:
     profiles: ["miner-vpn"]
     image: masaengineering/tee-worker:main
     pull_policy: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 1.2G
+        reservations:
+          cpus: '0.1'
+          memory: 0.8G
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
@@ -62,7 +79,6 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      # Mount Twitter cookies file using the username from TWITTER_ACCOUNTS
       - ./cookies.json:/home/masa/<your-username>_twitter_cookies.json
     depends_on:
       - vpn
@@ -75,6 +91,14 @@ services:
   vpn:
     profiles: ["miner-vpn"]
     image: ubuntu:22.04
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
     cap_add:
       - NET_ADMIN
     devices:
