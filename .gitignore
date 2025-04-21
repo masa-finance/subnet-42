@@ -24,3 +24,6 @@ notebooks/.DS_Store
 config.ovpn
 auth.txt
 cookies.json
+
+.env*
+!.env.example
