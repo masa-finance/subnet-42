@@ -31,7 +31,7 @@ services:
         max-file: "3"
   
   worker:
-    profiles: ["miner"]
+    profiles: ["miner", "validator"]
     image: masaengineering/tee-worker:main
     pull_policy: always
     deploy:
