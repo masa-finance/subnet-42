@@ -1,6 +1,6 @@
 services:
   neuron:
-    profiles: ["miner", "miner-vpn", "validator"]
+    profiles: ["miner", "miner-vpn", "validator", "validator-tee"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
     build:
@@ -36,7 +36,7 @@ services:
         max-file: "3"
   
   worker:
-    profiles: ["miner", "validator"]
+    profiles: ["miner", "validator-tee"]
     image: masaengineering/tee-worker:main
     pull_policy: always
     deploy:
