@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict
 import os
 from fiber.logging_utils import get_logger
 import datetime
@@ -234,6 +234,15 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add unregistered TEE management endpoint
+        self.app.add_api_route(
+            "/add-unregistered-tee",
+            self.add_unregistered_tee,
+            methods=["POST"],
+            tags=["management"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
     async def healthcheck(self):
         # Implement the healthcheck logic for the validator
         return self.validator.healthcheck()
@@ -406,6 +415,35 @@ class ValidatorAPI:
             }
         except Exception as e:
             return {"error": str(e)}
+
+    async def add_unregistered_tee(
+        self, address: str = Body(...), hotkey: str = Body(...)
+    ):
+        """
+        Add an unregistered TEE address and associated hotkey manually.
+
+        :param address: The TEE address to register
+        :param hotkey: The hotkey associated with the TEE address
+        :return: Success or error message
+        """
+        try:
+            # Validate input
+            if not address or not hotkey:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Both 'address' and 'hotkey' are required fields",
+                )
+
+            # Add the unregistered TEE to the database
+            self.validator.routing_table.add_unregistered_tee(address, hotkey)
+
+            return {
+                "success": True,
+                "message": f"Successfully added unregistered TEE with address: {address} and hotkey: {hotkey}",
+            }
+        except Exception as e:
+            logger.error(f"Failed to add unregistered TEE: {str(e)}")
+            return {"success": False, "error": str(e)}
 
     async def dashboard(self):
         # Implement the dashboard logic for the validator
