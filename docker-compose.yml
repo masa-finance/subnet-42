@@ -68,11 +68,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: 1.2G
+          cpus: '0.65'    # Reduced from 0.75
+          memory: 3G      # Reduced from 3.5G
         reservations:
-          cpus: '0.1'
-          memory: 0.8G
+          cpus: '0.4'
+          memory: 1.5G
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
