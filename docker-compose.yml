@@ -8,11 +8,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'    # Minimal CPU for lightweight proxy
-          memory: 512M     # Half a GB should be sufficient
+          cpus: '0.2'     # Reduced from 0.25
+          memory: 400M     # Reduced from 512M
         reservations:
           cpus: '0.1'
-          memory: 256M
+          memory: 200M
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
@@ -37,11 +37,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.75'    # More CPU for SGX workers
-          memory: 3.5G     # More memory for SGX operations
+          cpus: '0.65'    # Reduced from 0.75
+          memory: 3G      # Reduced from 3.5G
         reservations:
-          cpus: '0.5'
-          memory: 2G
+          cpus: '0.4'
+          memory: 1.5G
     environment:
       - ROLE=validator
     devices:
