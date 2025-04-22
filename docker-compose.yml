@@ -38,7 +38,7 @@ services:
     pull_policy: always
     deploy:
       resources:
-        ${WORKER_RESOURCES:-}
+        ${WORKER_RESOURCES:-{}}
     environment:
       - ROLE=validator
     devices:
