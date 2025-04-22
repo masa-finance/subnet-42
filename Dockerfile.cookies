@@ -38,9 +38,11 @@ RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd6
 # Set up working directory
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    selenium==4.15.2 \
+    webdriver-manager==4.0.1 \
+    python-dotenv==1.0.0
 
 # Copy the script 
 COPY scripts/cookie_grabber.py /app/cookie_grabber.py

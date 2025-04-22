@@ -51,6 +51,7 @@ services:
   cookie-generator:
     profiles: ["miner-vpn"]
     image: cookie-generator:latest
+    pull_policy: never
     build:
       context: .
       dockerfile: Dockerfile.cookies
