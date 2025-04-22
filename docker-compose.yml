@@ -10,14 +10,11 @@ services:
         when:
           variable: BUILD_LOCAL
           value: "true"
+    # volumes:
+    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     deploy:
       resources:
-        limits:
-          cpus: '0.2'     # Reduced from 0.25
-          memory: 400M     # Reduced from 512M
-        reservations:
-          cpus: '0.1'
-          memory: 200M
+        ${NEURON_RESOURCES:-}
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
@@ -41,12 +38,7 @@ services:
     pull_policy: always
     deploy:
       resources:
-        limits:
-          cpus: '0.65'    # Reduced from 0.75
-          memory: 6G  # or higher
-        reservations:
-          cpus: '0.4'
-          memory: 1.5G
+        ${WORKER_RESOURCES:-}
     environment:
       - ROLE=validator
     devices:
@@ -67,12 +59,7 @@ services:
     pull_policy: always
     deploy:
       resources:
-        limits:
-          cpus: '0.65'    # Reduced from 0.75
-          memory: 6G  # or higher
-        reservations:
-          cpus: '0.4'
-          memory: 1.5G
+        ${WORKER_VPN_RESOURCES:-}
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
@@ -98,12 +85,7 @@ services:
     image: ubuntu:22.04
     deploy:
       resources:
-        limits:
-          cpus: '0.2'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 256M
+        ${VPN_RESOURCES:-}
     cap_add:
       - NET_ADMIN
     devices:
