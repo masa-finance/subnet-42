@@ -14,7 +14,9 @@ services:
     #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     deploy:
       resources:
-        ${NEURON_RESOURCES:-{}}
+        limits:
+          memory: ${NEURON_MEMORY_LIMIT:-0}
+          cpus: ${NEURON_CPU_LIMIT:-0}
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
@@ -38,7 +40,9 @@ services:
     pull_policy: always
     deploy:
       resources:
-        ${WORKER_RESOURCES:-{}}
+        limits:
+          memory: ${WORKER_MEMORY_LIMIT:-0}
+          cpus: ${WORKER_CPU_LIMIT:-0}
     environment:
       - ROLE=validator
     devices:
@@ -59,7 +63,9 @@ services:
     pull_policy: always
     deploy:
       resources:
-        ${WORKER_VPN_RESOURCES:-{}}
+        limits:
+          memory: ${WORKER_VPN_MEMORY_LIMIT:-0}
+          cpus: ${WORKER_VPN_CPU_LIMIT:-0}
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
@@ -85,7 +91,9 @@ services:
     image: ubuntu:22.04
     deploy:
       resources:
-        ${VPN_RESOURCES:-{}}
+        limits:
+          memory: ${VPN_MEMORY_LIMIT:-0}
+          cpus: ${VPN_CPU_LIMIT:-0}
     cap_add:
       - NET_ADMIN
     devices:
