@@ -60,6 +60,11 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
+      - http_proxy=http://vpn:${VPN_PORT:-3128}
+      - https_proxy=http://vpn:${VPN_PORT:-3128}
+    depends_on:
+      vpn:
+        condition: service_started
     restart: "no"
     logging:
       driver: json-file
@@ -70,7 +75,7 @@ services:
   worker-vpn:
     profiles: ["miner-vpn"]
     image: masaengineering/tee-worker:main
-    pull_policy: always
+    restart: unless-stopped
     deploy:
       resources:
         limits:

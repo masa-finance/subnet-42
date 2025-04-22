@@ -52,6 +52,15 @@ def setup_driver():
         "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     )
 
+    # Set up proxy if environment variables are available
+    http_proxy = os.environ.get("http_proxy")
+    https_proxy = os.environ.get("https_proxy")
+
+    if http_proxy or https_proxy:
+        proxy = http_proxy or https_proxy
+        print(f"Using proxy: {proxy}")
+        options.add_argument(f"--proxy-server={proxy}")
+
     # Create the driver using webdriver_manager to handle ChromeDriver installation
     try:
         driver = webdriver.Chrome(
