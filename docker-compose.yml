@@ -43,7 +43,7 @@ services:
       resources:
         limits:
           cpus: '0.65'    # Reduced from 0.75
-          memory: 4G  # or higher
+          memory: 6G  # or higher
         reservations:
           cpus: '0.4'
           memory: 1.5G
@@ -69,7 +69,7 @@ services:
       resources:
         limits:
           cpus: '0.65'    # Reduced from 0.75
-          memory: 4G  # or higher
+          memory: 6G  # or higher
         reservations:
           cpus: '0.4'
           memory: 1.5G
