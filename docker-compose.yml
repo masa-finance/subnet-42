@@ -14,7 +14,7 @@ services:
     #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     deploy:
       resources:
-        ${NEURON_RESOURCES:-}
+        ${NEURON_RESOURCES:-{}}
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
