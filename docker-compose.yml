@@ -10,8 +10,8 @@ services:
         when:
           variable: BUILD_LOCAL
           value: "true"
-    # volumes:
-    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+    volumes:
+      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     deploy:
       resources:
         limits:
