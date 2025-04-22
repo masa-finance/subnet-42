@@ -20,3 +20,10 @@ data/*
 *.pyc
 notebooks/.DS_Store
 .conda
+
+config.ovpn
+auth.txt
+cookies.json
+
+.env*
+!.env.example

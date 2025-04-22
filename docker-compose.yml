@@ -1,6 +1,6 @@
 services:
-  subnet42:
-    profiles: ["miner", "validator"]
+  neuron:
+    profiles: ["miner", "miner-vpn", "validator", "validator-tee"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
     build:
@@ -10,11 +10,17 @@ services:
         when:
           variable: BUILD_LOCAL
           value: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'     # Reduced from 0.25
+          memory: 400M     # Reduced from 512M
+        reservations:
+          cpus: '0.1'
+          memory: 200M
     ports:
-      - "${VALIDATOR_PORT:-8092}:8092"
-      - "${MINER_PORT:-8091}:8091"
-    # volumes:
-    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+      - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
+      - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
     environment:
       - ROLE=${ROLE:-miner}
       - WALLET_NAME=${WALLET_NAME:-default}
@@ -28,11 +34,19 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  tee-worker:
-    profiles: ["miner"]
+  
+  worker:
+    profiles: ["miner", "validator-tee"]
     image: masaengineering/tee-worker:main
     pull_policy: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.65'    # Reduced from 0.75
+          memory: 4G  # or higher
+        reservations:
+          cpus: '0.4'
+          memory: 1.5G
     environment:
       - ROLE=validator
     devices:
@@ -40,9 +54,73 @@ services:
       - /dev/sgx_provision
     network_mode: host
     volumes:
-      - ./.env:/home/masa/.env  # This maps the .env file to /home/masa/.env
+      - ./.env:/home/masa/.env
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  worker-vpn:
+    profiles: ["miner-vpn"]
+    image: masaengineering/tee-worker:main
+    pull_policy: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.65'    # Reduced from 0.75
+          memory: 4G  # or higher
+        reservations:
+          cpus: '0.4'
+          memory: 1.5G
+    ports:
+      - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
+    environment:
+      - ROLE=validator
+      - http_proxy=http://vpn:${VPN_PORT:-3128}
+      - https_proxy=http://vpn:${VPN_PORT:-3128}
+    devices:
+      - /dev/sgx_enclave
+      - /dev/sgx_provision
+    volumes:
+      - ./.env:/home/masa/.env
+      - ./cookies.json:/home/masa/<your-username>_twitter_cookies.json
+    depends_on:
+      - vpn
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  vpn:
+    profiles: ["miner-vpn"]
+    image: ubuntu:22.04
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    ports:
+      - "${VPN_PORT:-3128}:3128"
+    volumes:
+      - ./config.ovpn:/etc/openvpn/config/config.ovpn
+      - ./auth.txt:/etc/openvpn/config/auth.txt
+    command: >
+      bash -c "apt-get update && 
+      apt-get install -y openvpn curl iptables tinyproxy &&
+      echo 'net.ipv4.ip_forward=1' > /etc/sysctl.conf &&
+      sysctl -p &&
+      echo 'Allow 0.0.0.0/0' >> /etc/tinyproxy/tinyproxy.conf &&
+      sed -i 's/Port 8888/Port ${VPN_PORT:-3128}/g' /etc/tinyproxy/tinyproxy.conf &&
+      service tinyproxy restart &&
+      iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
+      openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3"
+    restart: unless-stopped
