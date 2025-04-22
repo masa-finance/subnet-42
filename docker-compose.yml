@@ -57,12 +57,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${WORKER_VPN_MEMORY_LIMIT:-0}
-          cpus: ${WORKER_VPN_CPU_LIMIT:-0}
+          memory: ${WORKER_MEMORY_LIMIT:-0}
+          cpus: ${WORKER_CPU_LIMIT:-0}
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
-      - ROLE=validator
       - http_proxy=http://vpn:${VPN_PORT:-3128}
       - https_proxy=http://vpn:${VPN_PORT:-3128}
     devices:
