@@ -36,14 +36,30 @@ services:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-0}
           cpus: ${WORKER_CPU_LIMIT:-0}
-    environment:
-      - ROLE=validator
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cookie-generator:
+    profiles: ["miner-vpn"]
+    image: cookie-generator:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.cookies
+    volumes:
+      - ./.env:/app/.env
+      - ./cookies:/app/cookies
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: "no"
     logging:
       driver: json-file
       options:
@@ -69,9 +85,12 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - ./cookies.json:/home/masa/<your-username>_twitter_cookies.json
+      - ./cookies:/home/masa/
     depends_on:
-      - vpn
+      cookie-generator:
+        condition: service_completed_successfully
+      vpn:
+        condition: service_started
     logging:
       driver: json-file
       options:
