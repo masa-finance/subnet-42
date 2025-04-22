@@ -10,8 +10,8 @@ services:
         when:
           variable: BUILD_LOCAL
           value: "true"
-    # volumes:
-    #   - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
+    volumes:
+      - ${WALLET_PATH:-~/.bittensor}:/root/.bittensor
     deploy:
       resources:
         limits:
@@ -20,13 +20,6 @@ services:
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
-    environment:
-      - ROLE=${ROLE:-miner}
-      - WALLET_NAME=${WALLET_NAME:-default}
-      - VALIDATOR_WALLET_NAME=${VALIDATOR_WALLET_NAME:-default}
-      - SUBTENSOR_NETWORK=${SUBTENSOR_NETWORK:-test}
-      - NETUID=${NETUID:-165}
-      - AUTO_GENERATE_HOTKEY=${AUTO_GENERATE_HOTKEY}
     env_file: .env
     logging:
       driver: json-file

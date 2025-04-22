@@ -7,7 +7,7 @@ trap 'echo "Script exiting with code $?"' EXIT
 set +x
 
 # If we have a mounted wallet, skip all initialization
-if [ -d "$HOME/.bittensor/wallets" ] && [ "$(ls -A $HOME/.bittensor/wallets)" ]; then
+if [ -d "$HOME/.bittensor/wallets" ] && [ "$(ls -A $HOME/.bittensor/wallets)" ] && [ -d "$HOME/.bittensor/wallets/${WALLET_NAME:-default}" ]; then
     echo "Found mounted wallet, skipping initialization"
 else
     # Only do initialization if no mounted wallet
