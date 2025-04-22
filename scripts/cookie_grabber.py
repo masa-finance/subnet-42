@@ -2,15 +2,12 @@
 import json
 import time
 import os
-import argparse
-import urllib.parse
-import base64
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -98,9 +95,7 @@ def login_to_twitter(driver, username, password):
                 continue
 
         if not username_input:
-            print("Could not find username field. Taking screenshot for debugging...")
-            driver.save_screenshot("login_page.png")
-            print(f"Screenshot saved as login_page.png")
+            print("Could not find username field.")
             return False
 
         # Enter username
@@ -129,7 +124,6 @@ def login_to_twitter(driver, username, password):
                     break
         except Exception as e:
             print(f"Error clicking next button: {str(e)}")
-            driver.save_screenshot("next_button_error.png")
 
         # Wait for password field
         print("Waiting for password field...")
@@ -151,9 +145,7 @@ def login_to_twitter(driver, username, password):
                 continue
 
         if not password_input:
-            print("Could not find password field. Taking screenshot for debugging...")
-            driver.save_screenshot("password_field.png")
-            print(f"Screenshot saved as password_field.png")
+            print("Could not find password field.")
             return False
 
         # Enter password
@@ -190,7 +182,6 @@ def login_to_twitter(driver, username, password):
                 print("Pressed Enter on password field")
         except Exception as e:
             print(f"Error clicking login button: {str(e)}")
-            driver.save_screenshot("login_button_error.png")
 
         # Wait for login to complete
         print("Waiting for login to complete...")
@@ -204,9 +195,7 @@ def login_to_twitter(driver, username, password):
             print("Successfully logged in!")
             return True
         except TimeoutException:
-            print("Timed out waiting for home page. Taking screenshot...")
-            driver.save_screenshot("login_timeout.png")
-            print(f"Screenshot saved as login_timeout.png")
+            print("Timed out waiting for home page.")
 
             # Check if we need to handle verification
             if "verify" in driver.current_url or "challenge" in driver.current_url:
@@ -228,8 +217,6 @@ def login_to_twitter(driver, username, password):
 
     except Exception as e:
         print(f"Unexpected error during login: {str(e)}")
-        driver.save_screenshot("login_error.png")
-        print(f"Screenshot saved as login_error.png")
         return False
 
 
@@ -256,56 +243,10 @@ def generate_cookies_json(cookie_values):
     return cookies
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Login to Twitter and grab cookies")
-    parser.add_argument("--username", help="Twitter username or email")
-    parser.add_argument("--password", help="Twitter password")
-    parser.add_argument(
-        "--output",
-        help="Output JSON file path (optional, defaults to <TWITTER_USERNAME>_twitter_cookies.json)",
-    )
-    parser.add_argument(
-        "--debug", action="store_true", help="Enable debug mode with screenshots"
-    )
-
-    args = parser.parse_args()
-
-    # Get multiple accounts from TWITTER_ACCOUNTS env variable
-    twitter_accounts_str = os.environ.get("TWITTER_ACCOUNTS", "")
-
-    # If command line args are provided, they take precedence
-    if args.username and args.password:
-        process_single_account(args.username, args.password, args.output, args.debug)
-    # If TWITTER_ACCOUNTS env variable is set
-    elif twitter_accounts_str:
-        account_pairs = twitter_accounts_str.split(",")
-
-        for account_pair in account_pairs:
-            if ":" not in account_pair:
-                print(
-                    f"Invalid account format: {account_pair}. Expected format: username:password"
-                )
-                continue
-
-            username, password = account_pair.split(":", 1)
-            username = username.strip()
-            password = password.strip()
-
-            output_file = f"{username}_twitter_cookies.json"
-            print(f"\n--- Processing account: {username} ---")
-            process_single_account(username, password, output_file, args.debug)
-    else:
-        # Fallback to manual input
-        username = input("Enter your Twitter username or email: ")
-        password = input("Enter your Twitter password: ")
-        process_single_account(username, password, None, args.debug)
-
-
-def process_single_account(username, password, output_file=None, debug=False):
+def process_account(username, password):
     """Process a single Twitter account and get its cookies."""
-    # Set default output filename based on username
-    if not output_file:
-        output_file = f"{username}_twitter_cookies.json"
+    # Set output filename based on username
+    output_file = f"{username}_twitter_cookies.json"
 
     driver = setup_driver()
 
@@ -334,20 +275,41 @@ def process_single_account(username, password, output_file=None, debug=False):
             cookies_json = generate_cookies_json(cookie_values)
             formatted_json = json.dumps(cookies_json, indent=2)
 
-            # Always save to a file
+            # Save to a file
             with open(output_file, "w") as f:
                 f.write(formatted_json)
             print(f"Cookies JSON saved to {output_file}")
-
-            # Also print to stdout if no output file was explicitly specified
-            if not output_file:
-                print("Cookie values:")
-                print(formatted_json)
         else:
             print("Failed to login to Twitter.")
     finally:
-        if not debug:  # Only close browser if not in debug mode
-            driver.quit()
+        driver.quit()
+
+
+def main():
+    """Main function to process Twitter accounts from environment variable."""
+    # Get Twitter accounts from environment variable
+    twitter_accounts_str = os.environ.get("TWITTER_ACCOUNTS", "")
+
+    if not twitter_accounts_str:
+        print("Error: TWITTER_ACCOUNTS environment variable is not set.")
+        print("Format should be: username1:password1,username2:password2")
+        return
+
+    account_pairs = twitter_accounts_str.split(",")
+
+    for account_pair in account_pairs:
+        if ":" not in account_pair:
+            print(
+                f"Invalid account format: {account_pair}. Expected format: username:password"
+            )
+            continue
+
+        username, password = account_pair.split(":", 1)
+        username = username.strip()
+        password = password.strip()
+
+        print(f"\n--- Processing account: {username} ---")
+        process_account(username, password)
 
 
 if __name__ == "__main__":
