@@ -52,23 +52,41 @@ def setup_driver():
         "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     )
 
-    # Set up proxy if environment variables are available
-    http_proxy = os.environ.get("http_proxy")
-    https_proxy = os.environ.get("https_proxy")
+    # Set up proxy if environment variables are available - temporarily disabled for testing
+    # http_proxy = os.environ.get("http_proxy")
+    # https_proxy = os.environ.get("https_proxy")
 
-    if http_proxy or https_proxy:
-        proxy = http_proxy or https_proxy
-        print(f"Using proxy: {proxy}")
-        options.add_argument(f"--proxy-server={proxy}")
+    # if http_proxy or https_proxy:
+    #     proxy = http_proxy or https_proxy
+    #     print(f"Using proxy: {proxy}")
+    #     options.add_argument(f"--proxy-server={proxy}")
 
-    # Create the driver using webdriver_manager to handle ChromeDriver installation
+    # Use Chromium binary path if we're in the Docker container with Chromium installed
+    if os.path.exists("/usr/bin/chromium"):
+        options.binary_location = "/usr/bin/chromium"
+        print("Using Chromium binary from /usr/bin/chromium")
+
+    # Try to create the driver
     try:
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), options=options
-        )
-    except:
-        # Fallback to standard initialization if webdriver_manager fails
+        # First try with webdriver_manager
         driver = webdriver.Chrome(options=options)
+    except Exception as e:
+        print(f"Error creating driver with default approach: {str(e)}")
+        try:
+            # Try with explicitly finding chromedriver
+            if os.path.exists("/usr/bin/chromedriver"):
+                print("Using chromedriver from /usr/bin/chromedriver")
+                driver = webdriver.Chrome(
+                    service=Service("/usr/bin/chromedriver"), options=options
+                )
+            else:
+                # Last resort: try with webdriver_manager
+                driver = webdriver.Chrome(
+                    service=Service(ChromeDriverManager().install()), options=options
+                )
+        except Exception as e2:
+            print(f"Error creating driver with fallback approach: {str(e2)}")
+            raise
 
     return driver
 
@@ -256,6 +274,10 @@ def process_account(username, password):
     """Process a single Twitter account and get its cookies."""
     # Set output filename based on username
     output_file = f"{username}_twitter_cookies.json"
+    print(f"Will save cookies to: {output_file}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Contents of current directory: {os.listdir('.')}")
+    print(f"Contents of cookies directory: {os.listdir('./cookies')}")
 
     driver = setup_driver()
 
@@ -284,10 +306,16 @@ def process_account(username, password):
             cookies_json = generate_cookies_json(cookie_values)
             formatted_json = json.dumps(cookies_json, indent=2)
 
-            # Save to a file
-            with open(output_file, "w") as f:
+            # Save to a file in the cookies directory
+            output_path = os.path.join("./cookies", output_file)
+            print(f"Saving cookies to path: {output_path}")
+
+            with open(output_path, "w") as f:
                 f.write(formatted_json)
-            print(f"Cookies JSON saved to {output_file}")
+            print(f"Cookies JSON saved to {output_path}")
+            print(
+                f"After writing, contents of cookies directory: {os.listdir('./cookies')}"
+            )
         else:
             print("Failed to login to Twitter.")
     finally:

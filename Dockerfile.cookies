@@ -1,15 +1,12 @@
 FROM python:3.9-slim
 
-# Install Chrome and its dependencies
+# Update package repositories and install dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
     xvfb \
-    libxi6 \
-    libgconf-2-4 \
     fonts-liberation \
-    libappindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -23,16 +20,12 @@ RUN apt-get update && apt-get install -y \
     libxcursor1 \
     libxdamage1 \
     libxfixes3 \
+    libxi6 \
     libxrandr2 \
     libxss1 \
     libxtst6 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Chrome
-RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get update \
-    && apt-get install -y ./google-chrome-stable_current_amd64.deb \
-    && rm ./google-chrome-stable_current_amd64.deb \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
