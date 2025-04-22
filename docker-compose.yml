@@ -85,7 +85,7 @@ services:
     image: ubuntu:22.04
     deploy:
       resources:
-        ${VPN_RESOURCES:-}
+        ${VPN_RESOURCES:-{}}
     cap_add:
       - NET_ADMIN
     devices:
