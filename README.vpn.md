@@ -6,7 +6,7 @@ This guide will help you set up your Subnet-42 miner with a VPN for residential 
 
 - Docker installed
 - ExpressVPN subscription (or another OpenVPN-compatible VPN)
-- TWITTER_ACCOUNTS defined in .env, with username:password for each account, comma separated
+- Twitter account credentials for cookie generation
 
 ## 🔧 Setup Steps
 
@@ -36,7 +36,7 @@ Add your Twitter account credentials to your .env file:
 TWITTER_ACCOUNTS="username1:password1,username2:password2"
 ```
 
-The system will automatically log in to Twitter and generate the required cookie files when you start the services. No manual cookie extraction is needed anymore!
+The system will automatically log in to Twitter and generate the required cookie files when you start the services using our built-in cookie-generator container.
 
 ### 3️⃣ Launch Everything
 
@@ -49,11 +49,19 @@ docker compose --profile miner-vpn up -d
 This will start four containers:
 
 - `neuron`: Your subnet-42 miner (accessible on port 8091)
-- `cookie-generator`: Automatically logs in to Twitter and extracts cookies
+- `cookie-generator`: Automatically logs in to Twitter and extracts cookies to the `cookies/` directory
 - `worker-vpn`: Your TEE worker with VPN routing (accessible on port 8080)
 - `vpn`: OpenVPN client with TinyProxy (routes worker traffic through VPN)
 
-The cookie-generator service will run once, create the necessary cookie files in the `cookies/` directory, and then exit. The worker-vpn service will wait for the cookie generation to complete before starting. The `cookies/` directory will be created automatically if it doesn't exist.
+The cookie-generator service will:
+
+- Run automatically when you start the services
+- Log into your Twitter accounts using Firefox in headless mode
+- Extract the necessary authentication cookies
+- Save them to the `cookies/` directory (created automatically)
+- Exit once cookies are generated
+
+The worker-vpn service will wait for the cookie files before starting.
 
 ## 🧪 Testing Your Setup
 
@@ -95,6 +103,9 @@ If you encounter issues with automatic cookie generation:
 ```bash
 # View cookie generator logs
 docker compose --profile miner-vpn logs cookie-generator
+
+# Check if cookies were generated
+docker exec worker-vpn ls -la /app/cookies
 
 # Restart cookie generation if needed
 docker compose --profile miner-vpn up --force-recreate cookie-generator

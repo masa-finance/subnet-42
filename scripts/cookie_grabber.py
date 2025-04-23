@@ -15,8 +15,8 @@ from webdriver_manager.firefox import GeckoDriverManager
 # Twitter cookie names to extract
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 
-# Get output directory from environment variable
-OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app/cookies")
+# Fixed output directory
+OUTPUT_DIR = "/app/cookies"
 
 
 def create_cookie_template(name, value):
@@ -48,35 +48,25 @@ def setup_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--width=1920")
     options.add_argument("--height=1080")
-
-    # Additional options for running in Docker
     options.add_argument("--disable-extensions")
 
     # Get proxy settings from environment variables
     http_proxy = os.environ.get("http_proxy")
-    print(f"HTTP_PROXY environment variable: {http_proxy}")
-
     if http_proxy and "http://" in http_proxy:
-        print(f"Setting up proxy: {http_proxy}")
         options.set_preference("network.proxy.type", 1)
         proxy_parts = http_proxy.replace("http://", "").split(":")
         if len(proxy_parts) == 2:
             proxy_host, proxy_port = proxy_parts
-            print(f"Proxy host: {proxy_host}, Proxy port: {proxy_port}")
             options.set_preference("network.proxy.http", proxy_host)
             options.set_preference("network.proxy.http_port", int(proxy_port))
             options.set_preference("network.proxy.ssl", proxy_host)
             options.set_preference("network.proxy.ssl_port", int(proxy_port))
-    else:
-        print("No proxy configuration detected or not using proxy")
 
-    # Add user agent to avoid detection
+    # Add user agent and anti-detection settings
     options.set_preference(
         "general.useragent.override",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
     )
-
-    # Additional options to avoid detection
     options.set_preference("dom.webdriver.enabled", False)
     options.set_preference("useAutomationExtension", False)
 
@@ -84,67 +74,21 @@ def setup_driver():
     os.environ["MOZ_HEADLESS_WIDTH"] = "1920"
     os.environ["MOZ_HEADLESS_HEIGHT"] = "1080"
 
-    # Display Firefox version information
-    print("Checking Firefox installation...")
-    try:
-        import subprocess
+    # Create Firefox profile directory
+    os.makedirs("/tmp/firefox_profile", exist_ok=True)
+    os.chmod("/tmp/firefox_profile", 0o755)
+    options.set_preference("profile", "/tmp/firefox_profile")
 
-        result = subprocess.run(
-            ["firefox-esr", "--version"], capture_output=True, text=True
+    try:
+        service = Service(
+            executable_path="/usr/local/bin/geckodriver",
+            log_path="/app/geckodriver.log",
         )
-        print(f"Firefox version: {result.stdout}")
-    except Exception as e:
-        print(f"Error checking Firefox version: {e}")
-
-    # Display geckodriver version information
-    print("Checking geckodriver installation...")
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            ["/usr/local/bin/geckodriver", "--version"], capture_output=True, text=True
-        )
-        print(f"Geckodriver version: {result.stdout}")
-    except Exception as e:
-        print(f"Error checking geckodriver version: {e}")
-
-    # Try to create the driver
-    try:
-        # Try to use the geckodriver in path
-        if os.path.exists("/usr/local/bin/geckodriver"):
-            print("Using geckodriver from /usr/local/bin/geckodriver")
-            service = Service(
-                executable_path="/usr/local/bin/geckodriver",
-                log_path="/app/geckodriver.log",
-            )
-
-            # Create Firefox profile directory with proper permissions
-            print("Setting up Firefox profile directory...")
-            os.makedirs("/tmp/firefox_profile", exist_ok=True)
-            os.chmod("/tmp/firefox_profile", 0o755)
-
-            options.set_preference("profile", "/tmp/firefox_profile")
-            driver = webdriver.Firefox(service=service, options=options)
-            print("Firefox driver successfully created!")
-        else:
-            # Fallback to webdriver_manager
-            print("Geckodriver not found in /usr/local/bin, using webdriver_manager")
-            driver = webdriver.Firefox(
-                service=Service(GeckoDriverManager().install()), options=options
-            )
-            print("Firefox driver successfully created with webdriver_manager!")
+        driver = webdriver.Firefox(service=service, options=options)
+        return driver
     except Exception as e:
         print(f"Error creating driver: {str(e)}")
-
-        # Try to get detailed error information
-        if os.path.exists("/app/geckodriver.log"):
-            print("Content of geckodriver log:")
-            with open("/app/geckodriver.log", "r") as f:
-                print(f.read())
-
         raise
-
-    return driver
 
 
 def login_to_twitter(driver, username, password):
@@ -152,14 +96,10 @@ def login_to_twitter(driver, username, password):
     try:
         # Navigate to Twitter login page
         driver.get("https://twitter.com/i/flow/login")
-        print("Waiting for login page to load...")
         time.sleep(5)  # Give page time to fully load
 
-        # Wait for and enter username
-        print("Looking for username field...")
+        # Find and enter username
         username_input = None
-
-        # Try different selectors for the username field
         selectors = [
             'input[autocomplete="username"]',
             'input[name="text"]',
@@ -172,22 +112,17 @@ def login_to_twitter(driver, username, password):
                     EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                 )
                 if username_input.is_displayed():
-                    print(f"Found username field with selector: {selector}")
                     break
             except:
                 continue
 
         if not username_input:
-            print("Could not find username field.")
-            # Save screenshot for debugging
             driver.save_screenshot("/app/login_page.png")
-            print("Saved screenshot to /app/login_page.png")
             return False
 
         # Enter username
         username_input.clear()
         username_input.send_keys(username)
-        print("Entered username")
         time.sleep(1)
 
         # Click next button - try different approaches
@@ -209,25 +144,18 @@ def login_to_twitter(driver, username, password):
                 if button.is_displayed():
                     button.click()
                     clicked = True
-                    print("Clicked next button")
                     break
 
             if not clicked:
                 # Try pressing Enter on username field as fallback
                 username_input.send_keys("\n")
-                print("Pressed Enter on username field")
-        except Exception as e:
-            print(f"Error clicking next button: {str(e)}")
+        except Exception:
+            pass
 
         # Wait for password field
-        print("Waiting for password field...")
         time.sleep(3)
 
-        # Save screenshot for debugging
-        driver.save_screenshot("/app/password_field.png")
-        print("Saved screenshot to /app/password_field.png")
-
-        # Try different selectors for password field
+        # Find password field
         password_input = None
         password_selectors = ['input[type="password"]', 'input[name="password"]']
 
@@ -237,19 +165,17 @@ def login_to_twitter(driver, username, password):
                     EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                 )
                 if password_input.is_displayed():
-                    print(f"Found password field with selector: {selector}")
                     break
             except:
                 continue
 
         if not password_input:
-            print("Could not find password field.")
+            driver.save_screenshot("/app/password_field.png")
             return False
 
         # Enter password
         password_input.clear()
         password_input.send_keys(password)
-        print("Entered password")
         time.sleep(1)
 
         # Click login button - try different approaches
@@ -272,77 +198,47 @@ def login_to_twitter(driver, username, password):
                 if button.is_displayed():
                     button.click()
                     clicked = True
-                    print("Clicked login button")
                     break
 
             if not clicked:
                 # Try pressing Enter on password field as fallback
                 password_input.send_keys("\n")
-                print("Pressed Enter on password field")
-        except Exception as e:
-            print(f"Error clicking login button: {str(e)}")
+        except Exception:
+            pass
 
         # Wait for login to complete
-        print("Waiting for login to complete...")
         try:
-            # Wait until we're logged in (URL changes or home page elements appear)
+            # Wait until we're logged in
             WebDriverWait(driver, 30).until(
                 lambda d: "home" in d.current_url
                 or "twitter.com/home" in d.current_url
                 or len(d.find_elements(By.CSS_SELECTOR, 'a[aria-label="Profile"]')) > 0
             )
-            print("Successfully logged in!")
-
-            # Save screenshot for debugging
-            driver.save_screenshot("/app/home_page.png")
-            print("Saved screenshot to /app/home_page.png")
-
             return True
         except TimeoutException:
-            print("Timed out waiting for home page.")
-
-            # Save screenshot for debugging
-            driver.save_screenshot("/app/timeout_page.png")
-            print("Saved screenshot to /app/timeout_page.png")
-
             # Check if we need to handle verification
             if "verify" in driver.current_url or "challenge" in driver.current_url:
-                print(
-                    "Verification or challenge detected. Please complete it manually in the browser."
-                )
-                print(
-                    "Since we're in a headless container, we can't complete manual verification."
-                )
-                return False
-
+                print("Verification or challenge detected that requires manual action.")
             return False
 
     except Exception as e:
-        print(f"Unexpected error during login: {str(e)}")
-
-        # Save screenshot for debugging
-        try:
-            driver.save_screenshot("/app/error_page.png")
-            print("Saved screenshot to /app/error_page.png")
-        except:
-            pass
-
+        print(f"Error during login: {str(e)}")
         return False
 
 
 def extract_cookies(driver):
     """Extract cookies from the browser."""
     browser_cookies = driver.get_cookies()
-    print(f"Found {len(browser_cookies)} cookies in total")
 
     cookie_values = {}
     for cookie in browser_cookies:
         if cookie["name"] in COOKIE_NAMES:
             cookie_values[cookie["name"]] = cookie["value"]
 
-    print(
-        f"Extracted {len(cookie_values)} Twitter cookies: {', '.join(cookie_values.keys())}"
-    )
+    # Log missing cookies
+    missing_cookies = [name for name in COOKIE_NAMES if name not in cookie_values]
+    if missing_cookies:
+        print(f"Missing cookies: {', '.join(missing_cookies)}")
 
     return cookie_values
 
@@ -350,21 +246,15 @@ def extract_cookies(driver):
 def generate_cookies_json(cookie_values):
     """Generate the cookies JSON from the provided cookie values."""
     cookies = []
-
     for name in COOKIE_NAMES:
         value = cookie_values.get(name, "<YOUR_VALUE_HERE>")
         cookies.append(create_cookie_template(name, value))
-
     return cookies
 
 
 def process_account(username, password):
     """Process a single Twitter account and get its cookies."""
-    # Set output filename based on username
     output_file = f"{username}_twitter_cookies.json"
-    print(f"Will save cookies to: {output_file}")
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Output directory: {OUTPUT_DIR}")
 
     # Create output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -372,49 +262,25 @@ def process_account(username, password):
     driver = setup_driver()
 
     try:
-        print(f"Starting login process for user: {username}")
+        print(f"Processing account: {username}")
         success = login_to_twitter(driver, username, password)
 
         if success:
-            print("Login successful. Extracting cookies...")
+            print(f"Login successful for {username}")
             # Go to twitter.com to ensure all cookies are set
             driver.get("https://twitter.com/home")
             time.sleep(3)  # Wait for cookies to be fully set
 
             cookie_values = extract_cookies(driver)
-
-            # Check if we got all the cookies
-            missing_cookies = [
-                name for name in COOKIE_NAMES if name not in cookie_values
-            ]
-            if missing_cookies:
-                print(
-                    f"Warning: The following cookies could not be extracted: {', '.join(missing_cookies)}"
-                )
-
-            # Generate cookies with no encoding
             cookies_json = generate_cookies_json(cookie_values)
 
-            # Save individual file
-            formatted_json = json.dumps(cookies_json, indent=2)
+            # Save cookies to file
             output_path = os.path.join(OUTPUT_DIR, output_file)
-            print(f"Saving cookies to path: {output_path}")
             with open(output_path, "w") as f:
-                f.write(formatted_json)
-            print(f"Cookies JSON saved to {output_path}")
-
-            # Create a dummy cookies.json in the parent directory for debugging
-            parent_dir = os.path.dirname(OUTPUT_DIR)
-            dummy_path = os.path.join(parent_dir, "cookies.json")
-            with open(dummy_path, "w") as f:
-                f.write('{"status": "ok"}')
-            print(f"Created dummy cookies.json at {dummy_path}")
-
-            print(
-                f"After writing, contents of output directory: {os.listdir(OUTPUT_DIR)}"
-            )
+                f.write(json.dumps(cookies_json, indent=2))
+            print(f"Saved cookies for {username}")
         else:
-            print("Failed to login to Twitter.")
+            print(f"Failed to login for {username}")
     finally:
         driver.quit()
 
@@ -442,7 +308,6 @@ def main():
         username = username.strip()
         password = password.strip()
 
-        print(f"\n--- Processing account: {username} ---")
         process_account(username, password)
 
 
