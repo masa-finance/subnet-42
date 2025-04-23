@@ -315,6 +315,9 @@ def process_account(username, password):
 
 def main():
     """Main function to process Twitter accounts from environment variable."""
+    # Create cookies directory if it doesn't exist
+    os.makedirs("./cookies", exist_ok=True)
+
     # Get Twitter accounts from environment variable
     twitter_accounts_str = os.environ.get("TWITTER_ACCOUNTS", "")
 

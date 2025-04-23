@@ -53,7 +53,7 @@ This will start four containers:
 - `worker-vpn`: Your TEE worker with VPN routing (accessible on port 8080)
 - `vpn`: OpenVPN client with TinyProxy (routes worker traffic through VPN)
 
-The cookie-generator service will run once, create the necessary cookie files in the `cookies/` directory, and then exit. The worker-vpn service will wait for the cookie generation to complete before starting.
+The cookie-generator service will run once, create the necessary cookie files in the `cookies/` directory, and then exit. The worker-vpn service will wait for the cookie generation to complete before starting. The `cookies/` directory will be created automatically if it doesn't exist.
 
 ## 🧪 Testing Your Setup
 
