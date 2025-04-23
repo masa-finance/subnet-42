@@ -1,0 +1,38 @@
+FROM python:3.9-slim
+
+# Update package repositories and install Firefox and dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    wget \
+    firefox-esr \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install geckodriver
+RUN wget -q https://github.com/mozilla/geckodriver/releases/download/v0.33.0/geckodriver-v0.33.0-linux64.tar.gz && \
+    tar -xzf geckodriver-v0.33.0-linux64.tar.gz -C /usr/local/bin && \
+    rm geckodriver-v0.33.0-linux64.tar.gz && \
+    chmod +x /usr/local/bin/geckodriver
+
+# Set up working directory
+WORKDIR /app
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    requests==2.31.0 \
+    python-dotenv==1.0.0 \
+    selenium==4.14.0 \
+    webdriver-manager==4.0.1 \
+    asyncio
+
+# Ensure cookies directory exists
+RUN mkdir -p /app/cookies
+
+# Copy the script 
+COPY scripts/cookie_grabber.py /app/cookie_grabber.py
+
+# Set default OUTPUT_DIR
+ENV OUTPUT_DIR=/app/cookies
+
+# Set the Python script as the entrypoint
+ENTRYPOINT ["python", "/app/cookie_grabber.py"]

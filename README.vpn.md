@@ -6,7 +6,7 @@ This guide will help you set up your Subnet-42 miner with a VPN for residential 
 
 - Docker installed
 - ExpressVPN subscription (or another OpenVPN-compatible VPN)
-- TWITTER_ACCOUNTS defined in .env, with username:password for each account, comma separated
+- Twitter account credentials for cookie generation
 
 ## 🔧 Setup Steps
 
@@ -27,112 +27,38 @@ your_expressvpn_password
 4. Rename it to `config.ovpn` and place it in your project root
 5. Edit the file to remove any `auth-user-pass` lines
 
-### 2️⃣ Prepare Twitter Cookies
+### 2️⃣ Generate Twitter Cookies
 
-1. Log into Twitter in your browser
-2. Open developer tools (F12) > Application tab > Cookies
-3. Create a file called `cookies.json` in your project root with the following format:
+First, add your Twitter account credentials to your .env file:
 
-```json
-[
-  {
-    "Name": "personalization_id",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "kdt",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "twid",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "ct0",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "auth_token",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "att",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  }
-]
+```
+# Add your Twitter accounts in this format
+TWITTER_ACCOUNTS="username1:password1,username2:password2"
 ```
 
-⚠️ **Update the `worker-vpn` service in the docker-compose.yml file to use your Twitter username:**
+Then, run the cookie generator service by itself:
 
-```yaml
-volumes:
-  - ./.env:/home/masa/.env
-  - ./cookies.json:/home/masa/<your_twitter_username>_twitter_cookies.json
+```bash
+# Create the cookies directory first if it doesn't exist
+mkdir -p cookies
+
+# Run the cookie generator
+docker compose --profile cookies up
 ```
 
-### 3️⃣ Launch Everything
+This will:
 
-Start your services with:
+- Build and run the cookie-generator container
+- Log into your Twitter accounts using Firefox in headless mode
+- Extract the necessary authentication cookies
+- Save them to the `cookies/` directory
+- Exit once cookies are generated
+
+Wait until this process completes before proceeding to the next step.
+
+### 3️⃣ Launch the Miner with VPN
+
+After generating the cookies, start the miner and VPN services:
 
 ```bash
 docker compose --profile miner-vpn up -d
@@ -143,6 +69,8 @@ This will start three containers:
 - `neuron`: Your subnet-42 miner (accessible on port 8091)
 - `worker-vpn`: Your TEE worker with VPN routing (accessible on port 8080)
 - `vpn`: OpenVPN client with TinyProxy (routes worker traffic through VPN)
+
+The worker-vpn service will use the cookie files previously generated.
 
 ## 🧪 Testing Your Setup
 
@@ -177,12 +105,27 @@ Both should be accessible from the public internet.
 
 ## 🔍 Troubleshooting
 
+### Cookie Generation Issues
+
+If you encounter issues with automatic cookie generation:
+
+```bash
+# View cookie generator logs
+docker compose --profile cookies logs
+
+# Check if cookies were generated
+ls -la ./cookies/
+
+# Restart cookie generation if needed
+docker compose --profile cookies up --force-recreate
+```
+
 ### "LoginAcid" Error
 
 If you see `login failed: auth error: LoginAcid`, try:
 
 - Using a different ExpressVPN server location
-- Checking your Twitter cookies are correct and up-to-date
+- Checking your Twitter account credentials in .env
 - Testing with different VPN server locations to find one that isn't flagged
 
 ### VPN Connection Issues
@@ -194,11 +137,3 @@ docker logs vpn
 ```
 
 Look for successful connection messages or error details.
-
-## 📝 Notes
-
-- The `miner` profile starts the standard setup without VPN
-- The `miner-vpn` profile starts everything with VPN routing
-- You can have multiple cookie files for different Twitter accounts
-
-Good luck and happy mining! 🎮🚀
