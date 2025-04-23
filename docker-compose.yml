@@ -87,7 +87,8 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - cookie-data:/home/masa
+      - cookie-data:/tmp/cookie-data
+    entrypoint: ["/bin/sh", "-c", "cp /tmp/cookie-data/cookies/* /home/masa/ || true && exec /home/masa/entrypoint.sh"]
     depends_on:
       cookie-generator:
         condition: service_completed_successfully
