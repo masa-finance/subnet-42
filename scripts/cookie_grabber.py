@@ -15,7 +15,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 
 # Get output directory from environment variable
-OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app")
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app/cookies")
 
 
 def create_cookie_template(name, value):
@@ -300,15 +300,15 @@ def process_account(username, password):
 
             # Generate cookies with no encoding
             cookies_json = generate_cookies_json(cookie_values)
-            formatted_json = json.dumps(cookies_json, indent=2)
 
-            # Save to a file in the output directory
+            # Save individual file
+            formatted_json = json.dumps(cookies_json, indent=2)
             output_path = os.path.join(OUTPUT_DIR, output_file)
             print(f"Saving cookies to path: {output_path}")
-
             with open(output_path, "w") as f:
                 f.write(formatted_json)
             print(f"Cookies JSON saved to {output_path}")
+
             print(
                 f"After writing, contents of output directory: {os.listdir(OUTPUT_DIR)}"
             )
