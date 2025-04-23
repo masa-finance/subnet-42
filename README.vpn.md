@@ -117,11 +117,3 @@ docker logs vpn
 ```
 
 Look for successful connection messages or error details.
-
-## 📝 Notes
-
-- The `miner` profile starts the standard setup without VPN
-- The `miner-vpn` profile starts everything with VPN routing
-- The `test-cookies` profile can be used to test cookie generation separately
-
-Good luck and happy mining! 🎮🚀
