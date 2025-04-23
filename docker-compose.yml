@@ -49,7 +49,7 @@ services:
         max-file: "3"
 
   cookie-generator:
-    profiles: ["miner-vpn", "test-cookies", "cookies-via-vpn", "cookies-direct"]
+    profiles: ["miner-vpn", "test-cookies"]
     image: cookie-generator:latest
     pull_policy: never
     build:
@@ -60,9 +60,6 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
-      - TWITTER_ACCOUNTS=${TWITTER_ACCOUNTS:-}
-      - http_proxy=${USE_PROXY:+http://vpn:${VPN_PORT:-3128}}
-      - https_proxy=${USE_PROXY:+http://vpn:${VPN_PORT:-3128}}
     restart: "no"
     logging:
       driver: json-file
