@@ -47,7 +47,15 @@ def take_screenshot(driver, name):
 
 
 def create_cookie_template(name, value):
-    """Create a standard cookie template with the given name and value."""
+    """
+    Create a standard cookie template with the given name and value.
+    Note: Cookie values should not contain double quotes as they cause errors in Go's HTTP client.
+    """
+    # Ensure no quotes in cookie value to prevent HTTP header issues
+    if value.startswith('"') and value.endswith('"'):
+        value = value[1:-1]
+    value = value.replace('"', "")
+
     return {
         "Name": name,
         "Value": value,
@@ -314,7 +322,14 @@ def extract_cookies(driver):
     cookie_values = {}
     for cookie in browser_cookies:
         if cookie["name"] in COOKIE_NAMES:
-            cookie_values[cookie["name"]] = cookie["value"]
+            # Strip double quotes from cookie values to prevent HTTP header issues
+            value = cookie["value"]
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]  # Remove surrounding quotes
+            # Replace any remaining quotes with empty string
+            value = value.replace('"', "")
+
+            cookie_values[cookie["name"]] = value
             logger.info(f"Found cookie: {cookie['name']}")
 
     # Log missing cookies
