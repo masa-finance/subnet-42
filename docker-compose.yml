@@ -57,7 +57,7 @@ services:
       dockerfile: Dockerfile.cookies
     volumes:
       - ./.env:/app/.env
-      - ./cookies:/app/cookies
+      - cookie-data:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
     restart: "no"
@@ -86,7 +86,7 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - ./cookies:/home/masa/
+      - cookie-data:/home/masa
     depends_on:
       cookie-generator:
         condition: service_completed_successfully
@@ -99,7 +99,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner-vpn", "test-cookies"]
+    profiles: ["miner-vpn"]
     image: ubuntu:22.04
     deploy:
       resources:
@@ -162,3 +162,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+
+volumes:
+  cookie-data:
