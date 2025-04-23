@@ -60,6 +60,7 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
+      - TWITTER_ACCOUNTS=${TWITTER_ACCOUNTS:-}
     restart: "no"
     logging:
       driver: json-file
@@ -162,6 +163,3 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-
-volumes:
-  cookie-data:
