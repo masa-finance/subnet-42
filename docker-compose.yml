@@ -102,7 +102,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner-vpn", "test-cookies", "cookies-via-vpn"]
+    profiles: ["miner-vpn"]
     image: ubuntu:22.04
     deploy:
       resources:
