@@ -5,6 +5,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
+import random
 
 # Twitter cookie names to extract
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
@@ -36,7 +37,21 @@ async def login_to_twitter(page, username, password):
     try:
         # Navigate to Twitter login page
         print("Opening Twitter login page...")
+
+        # More stealth: Add random mouse movements
+        await page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+
+        # Open Twitter with a realistic browser wait time
+        await page.goto("https://twitter.com", wait_until="networkidle")
+        await page.wait_for_timeout(random.randint(2000, 4000))
+
+        # Move around randomly to simulate human behavior
+        await page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+
+        # Now go to login page (more natural flow)
+        print("Navigating to login page...")
         await page.goto("https://twitter.com/i/flow/login", wait_until="networkidle")
+        await page.wait_for_timeout(random.randint(1000, 3000))
         print("Twitter login page loaded")
 
         # Save screenshot for debugging
@@ -44,9 +59,16 @@ async def login_to_twitter(page, username, password):
 
         # Wait for and enter username
         print("Looking for username field...")
-        await page.wait_for_selector('input[autocomplete="username"]', timeout=10000)
-        await page.fill('input[autocomplete="username"]', username)
+        await page.wait_for_selector('input[autocomplete="username"]', timeout=15000)
+
+        # Type username slowly like a human
+        await page.type(
+            'input[autocomplete="username"]', username, delay=random.randint(50, 150)
+        )
         print(f"Entered username: {username}")
+
+        # Random wait before clicking next
+        await page.wait_for_timeout(random.randint(500, 1500))
 
         # Click next button
         next_button = await page.query_selector('div[role="button"]:has-text("Next")')
@@ -57,6 +79,14 @@ async def login_to_twitter(page, username, password):
             )
 
         if next_button:
+            # Move mouse to button first
+            box = await next_button.bounding_box()
+            if box:
+                await page.mouse.move(
+                    box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+                )
+                await page.wait_for_timeout(random.randint(300, 800))
+
             await next_button.click()
             print("Clicked next button")
         else:
@@ -64,16 +94,24 @@ async def login_to_twitter(page, username, password):
             await page.press('input[autocomplete="username"]', "Enter")
             print("Pressed Enter on username field")
 
-        # Wait for password field
+        # Wait for password field with longer timeout
         print("Waiting for password field...")
-        await page.wait_for_selector('input[type="password"]', timeout=10000)
+        await page.wait_for_selector('input[type="password"]', timeout=20000)
+
+        # Random wait before entering password
+        await page.wait_for_timeout(random.randint(500, 1500))
 
         # Save screenshot for debugging
         await page.screenshot(path=os.path.join(OUTPUT_DIR, "password-page.png"))
 
-        # Enter password
-        await page.fill('input[type="password"]', password)
+        # Type password slowly like a human
+        await page.type(
+            'input[type="password"]', password, delay=random.randint(50, 150)
+        )
         print("Entered password")
+
+        # Random wait before clicking login
+        await page.wait_for_timeout(random.randint(500, 1500))
 
         # Click login button
         login_button = await page.query_selector(
@@ -86,6 +124,14 @@ async def login_to_twitter(page, username, password):
             )
 
         if login_button:
+            # Move mouse to button first
+            box = await login_button.bounding_box()
+            if box:
+                await page.mouse.move(
+                    box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+                )
+                await page.wait_for_timeout(random.randint(300, 800))
+
             await login_button.click()
             print("Clicked login button")
         else:
@@ -93,15 +139,18 @@ async def login_to_twitter(page, username, password):
             await page.press('input[type="password"]', "Enter")
             print("Pressed Enter on password field")
 
-        # Wait for home page to load or verification page
+        # Wait for home page to load or verification page with longer timeout
         try:
             # Wait for a success indicator (home timeline or profile icon)
             print("Waiting for successful login...")
             success = await page.wait_for_selector(
-                'a[data-testid="AppTabBar_Profile_Link"]', timeout=15000
+                'a[data-testid="AppTabBar_Profile_Link"]', timeout=25000
             )
             if success:
                 print("Successfully logged in!")
+
+                # Random wait before taking screenshot
+                await page.wait_for_timeout(random.randint(1000, 2000))
 
                 # Save screenshot for debugging
                 await page.screenshot(path=os.path.join(OUTPUT_DIR, "home-page.png"))
@@ -130,7 +179,9 @@ async def login_to_twitter(page, username, password):
         await page.screenshot(path=os.path.join(OUTPUT_DIR, "final-state.png"))
 
         # If we get here, we're not sure if login succeeded - try visiting home
+        print("Checking if login was successful by visiting home page...")
         await page.goto("https://twitter.com/home", wait_until="networkidle")
+        await page.wait_for_timeout(random.randint(2000, 4000))
 
         # If we're on the home page, login succeeded
         home_check = await page.query_selector('a[data-testid="AppTabBar_Home_Link"]')
@@ -198,19 +249,76 @@ async def process_account(username, password):
                 http_proxy = http_proxy[7:]  # Remove http:// prefix
             server = http_proxy
             proxy = {"server": server}
+            print(f"Configured proxy server: {server}")
 
-        # Launch the browser
+        # Launch the browser with appropriate flags
         print("Launching browser...")
+        browser_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--lang=en-US,en",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+        ]
+
         browser = await playwright.chromium.launch(
             headless=True,
             proxy=proxy,
-            args=["--no-sandbox", "--disable-setuid-sandbox"],
+            args=browser_args,
         )
 
-        # Create a browser context with proper viewport
+        # Create a browser context with realistic profile
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+
+        # Create a context that appears more like a real browser
         context = await browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080},
+            user_agent=user_agent,
+            locale="en-US",
+            timezone_id="America/New_York",
+            device_scale_factor=1,
+            is_mobile=False,
+            has_touch=False,
+            java_script_enabled=True,
+            ignore_https_errors=False,
+            extra_http_headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Sec-Ch-Ua": '"Chromium";v="119", "Google Chrome";v="119"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": "Windows",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+            },
+        )
+
+        # Set browser permissions
+        await context.grant_permissions(["geolocation"])
+
+        # Add JavaScript to avoid detection
+        await context.add_init_script(
+            """
+        // Overwrite the automation detection methods
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => false
+        });
+        
+        // Disable notifications
+        if (window.Notification) {
+            window.Notification.permission = 'denied';
+        }
+        
+        // Fix iframe focus issues
+        if (window.top !== window.self) {
+            window.top.focus();
+        }
+        """
         )
 
         # Create a new page
@@ -225,8 +333,8 @@ async def process_account(username, password):
                 # Go to twitter.com to ensure all cookies are set
                 await page.goto("https://twitter.com/home", wait_until="networkidle")
                 await page.wait_for_timeout(
-                    3000
-                )  # Wait 3 seconds for cookies to fully set
+                    5000
+                )  # Wait 5 seconds for cookies to fully set
 
                 cookie_values = await extract_cookies(context)
 

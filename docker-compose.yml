@@ -49,7 +49,7 @@ services:
         max-file: "3"
 
   cookie-generator:
-    profiles: ["miner-vpn"]
+    profiles: ["miner-vpn", "test-cookies", "test-cookies-vpn"]
     image: cookie-generator:latest
     pull_policy: never
     build:
@@ -60,7 +60,12 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
+      - http_proxy=http://vpn:${VPN_PORT:-3128}
+      - https_proxy=http://vpn:${VPN_PORT:-3128}
     restart: "no"
+    depends_on:
+      vpn:
+        condition: service_healthy
     logging:
       driver: json-file
       options:
@@ -102,7 +107,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner-vpn"]
+    profiles: ["miner-vpn", "test-cookies-vpn"]
     image: ubuntu:22.04
     deploy:
       resources:
