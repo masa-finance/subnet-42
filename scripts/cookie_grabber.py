@@ -39,6 +39,7 @@ def create_cookie_template(name, value):
 def setup_driver():
     """Set up and return a browser driver instance."""
     options = webdriver.ChromeOptions()
+
     # Run headless for Docker environment
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -50,10 +51,18 @@ def setup_driver():
     options.add_argument("--disable-extensions")
     options.add_argument("--ignore-certificate-errors")
 
+    # Proxy settings will be picked up from environment variables
+    # http_proxy and https_proxy if set via Docker
+
     # Add user agent to avoid detection
     options.add_argument(
-        "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     )
+
+    # Additional options to avoid detection
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
 
     # Use Chromium binary path if we're in the Docker container with Chromium installed
     if os.path.exists("/usr/bin/chromium"):
@@ -64,6 +73,18 @@ def setup_driver():
     try:
         # First try with webdriver_manager
         driver = webdriver.Chrome(options=options)
+
+        # Execute CDP commands to reduce bot detection
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": """
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """
+            },
+        )
     except Exception as e:
         print(f"Error creating driver with default approach: {str(e)}")
         try:
@@ -78,6 +99,18 @@ def setup_driver():
                 driver = webdriver.Chrome(
                     service=Service(ChromeDriverManager().install()), options=options
                 )
+
+            # Execute CDP commands to reduce bot detection
+            driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": """
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                """
+                },
+            )
         except Exception as e2:
             print(f"Error creating driver with fallback approach: {str(e2)}")
             raise

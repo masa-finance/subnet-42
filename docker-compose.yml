@@ -49,7 +49,7 @@ services:
         max-file: "3"
 
   cookie-generator:
-    profiles: ["miner-vpn", "test-cookies"]
+    profiles: ["miner-vpn", "test-cookies", "cookies-via-vpn"]
     image: cookie-generator:latest
     pull_policy: never
     build:
@@ -61,7 +61,12 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TWITTER_ACCOUNTS=${TWITTER_ACCOUNTS:-}
+      - http_proxy=http://vpn:${VPN_PORT:-3128}
+      - https_proxy=http://vpn:${VPN_PORT:-3128}
     restart: "no"
+    depends_on:
+      vpn:
+        condition: service_healthy
     logging:
       driver: json-file
       options:
@@ -103,7 +108,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner-vpn"]
+    profiles: ["miner-vpn", "test-cookies", "cookies-via-vpn"]
     image: ubuntu:22.04
     deploy:
       resources:
