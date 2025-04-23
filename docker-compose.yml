@@ -57,10 +57,9 @@ services:
       dockerfile: Dockerfile.cookies
     volumes:
       - ./.env:/app/.env
-      - cookie-data:/app
+      - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
-      - OUTPUT_DIR=/app
     restart: "no"
     logging:
       driver: json-file
@@ -87,8 +86,7 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - cookie-data:/tmp/cookie-data
-    entrypoint: ["/bin/sh", "-c", "cp /tmp/cookie-data/cookies/* /home/masa/ || true && exec /home/masa/entrypoint.sh"]
+      - ./cookies:/home/masa
     depends_on:
       cookie-generator:
         condition: service_completed_successfully
