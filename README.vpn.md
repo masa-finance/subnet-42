@@ -49,9 +49,9 @@ docker compose --profile cookies up
 This will:
 
 - Build and run the cookie-generator container
-- Log into your Twitter accounts using Firefox in headless mode
+- Log into your Twitter accounts using Chromium browser in headless mode
 - Extract the necessary authentication cookies
-- Save them to the `cookies/` directory
+- Save them to the `cookies/` directory along with screenshots of each step and logs
 - Exit once cookies are generated
 
 Wait until this process completes before proceeding to the next step.

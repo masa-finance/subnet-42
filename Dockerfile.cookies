@@ -1,18 +1,16 @@
 FROM python:3.9-slim
 
-# Update package repositories and install Firefox and dependencies
+# Update package repositories and install Chromium dependencies
 RUN apt-get update && apt-get install -y \
     curl \
-    gnupg \
     wget \
-    firefox-esr \
+    gnupg \
+    ca-certificates \
+    chromium \
+    chromium-driver \
+    fonts-liberation \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
-
-# Install geckodriver
-RUN wget -q https://github.com/mozilla/geckodriver/releases/download/v0.33.0/geckodriver-v0.33.0-linux64.tar.gz && \
-    tar -xzf geckodriver-v0.33.0-linux64.tar.gz -C /usr/local/bin && \
-    rm geckodriver-v0.33.0-linux64.tar.gz && \
-    chmod +x /usr/local/bin/geckodriver
 
 # Set up working directory
 WORKDIR /app
@@ -25,7 +23,7 @@ RUN pip install --no-cache-dir \
     webdriver-manager==4.0.1 \
     asyncio
 
-# Ensure cookies directory exists
+# Create cookies directory
 RUN mkdir -p /app/cookies
 
 # Copy the script 
