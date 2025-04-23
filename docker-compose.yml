@@ -64,8 +64,6 @@ services:
       - http_proxy=${USE_PROXY:+http://vpn:${VPN_PORT:-3128}}
       - https_proxy=${USE_PROXY:+http://vpn:${VPN_PORT:-3128}}
     restart: "no"
-    depends_on:
-      - vpn
     logging:
       driver: json-file
       options:
