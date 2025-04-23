@@ -27,108 +27,16 @@ your_expressvpn_password
 4. Rename it to `config.ovpn` and place it in your project root
 5. Edit the file to remove any `auth-user-pass` lines
 
-### 2️⃣ Prepare Twitter Cookies
+### 2️⃣ Configure Twitter Accounts
 
-1. Log into Twitter in your browser
-2. Open developer tools (F12) > Application tab > Cookies
-3. Create a file called `cookies.json` in your project root with the following format:
+Add your Twitter account credentials to your .env file:
 
-```json
-[
-  {
-    "Name": "personalization_id",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "kdt",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "twid",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "ct0",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "auth_token",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  },
-  {
-    "Name": "att",
-    "Value": "<YOUR_VALUE_HERE>",
-    "Path": "",
-    "Domain": "twitter.com",
-    "Expires": "0001-01-01T00:00:00Z",
-    "RawExpires": "",
-    "MaxAge": 0,
-    "Secure": false,
-    "HttpOnly": false,
-    "SameSite": 0,
-    "Raw": "",
-    "Unparsed": null
-  }
-]
+```
+# Add your Twitter accounts in this format
+TWITTER_ACCOUNTS="username1:password1,username2:password2"
 ```
 
-⚠️ **Update the `worker-vpn` service in the docker-compose.yml file to use your Twitter username:**
-
-```yaml
-volumes:
-  - ./.env:/home/masa/.env
-  - ./cookies.json:/home/masa/<your_twitter_username>_twitter_cookies.json
-```
+The system will automatically log in to Twitter and generate the required cookie files when you start the services. No manual cookie extraction is needed anymore!
 
 ### 3️⃣ Launch Everything
 
@@ -138,11 +46,14 @@ Start your services with:
 docker compose --profile miner-vpn up -d
 ```
 
-This will start three containers:
+This will start four containers:
 
 - `neuron`: Your subnet-42 miner (accessible on port 8091)
+- `cookie-generator`: Automatically logs in to Twitter and extracts cookies
 - `worker-vpn`: Your TEE worker with VPN routing (accessible on port 8080)
 - `vpn`: OpenVPN client with TinyProxy (routes worker traffic through VPN)
+
+The cookie-generator service will run once, create the necessary cookie files in the `cookies/` directory, and then exit. The worker-vpn service will wait for the cookie generation to complete before starting.
 
 ## 🧪 Testing Your Setup
 
@@ -177,12 +88,24 @@ Both should be accessible from the public internet.
 
 ## 🔍 Troubleshooting
 
+### Cookie Generation Issues
+
+If you encounter issues with automatic cookie generation:
+
+```bash
+# View cookie generator logs
+docker compose --profile miner-vpn logs cookie-generator
+
+# Restart cookie generation if needed
+docker compose --profile miner-vpn up --force-recreate cookie-generator
+```
+
 ### "LoginAcid" Error
 
 If you see `login failed: auth error: LoginAcid`, try:
 
 - Using a different ExpressVPN server location
-- Checking your Twitter cookies are correct and up-to-date
+- Checking your Twitter account credentials in .env
 - Testing with different VPN server locations to find one that isn't flagged
 
 ### VPN Connection Issues
@@ -199,6 +122,6 @@ Look for successful connection messages or error details.
 
 - The `miner` profile starts the standard setup without VPN
 - The `miner-vpn` profile starts everything with VPN routing
-- You can have multiple cookie files for different Twitter accounts
+- The `test-cookies` profile can be used to test cookie generation separately
 
 Good luck and happy mining! 🎮🚀

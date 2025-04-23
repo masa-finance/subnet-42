@@ -1,4 +1,3 @@
-
 /venv
 prompt.md
 currentwork.md
@@ -24,6 +23,9 @@ notebooks/.DS_Store
 config.ovpn
 auth.txt
 cookies.json
+# Ignore cookie files but keep the directory structure
+cookies/*
+!cookies/.gitkeep
 
 .env*
 !.env.example
