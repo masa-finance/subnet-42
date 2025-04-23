@@ -39,6 +39,7 @@ def create_cookie_template(name, value):
 
 def setup_driver():
     """Set up and return a browser driver instance."""
+    print("Setting up Firefox driver...")
     options = Options()
 
     # Run headless for Docker environment
@@ -50,18 +51,24 @@ def setup_driver():
 
     # Additional options for running in Docker
     options.add_argument("--disable-extensions")
-    options.set_preference("network.proxy.type", 1)
 
     # Get proxy settings from environment variables
     http_proxy = os.environ.get("http_proxy")
+    print(f"HTTP_PROXY environment variable: {http_proxy}")
+
     if http_proxy and "http://" in http_proxy:
+        print(f"Setting up proxy: {http_proxy}")
+        options.set_preference("network.proxy.type", 1)
         proxy_parts = http_proxy.replace("http://", "").split(":")
         if len(proxy_parts) == 2:
             proxy_host, proxy_port = proxy_parts
+            print(f"Proxy host: {proxy_host}, Proxy port: {proxy_port}")
             options.set_preference("network.proxy.http", proxy_host)
             options.set_preference("network.proxy.http_port", int(proxy_port))
             options.set_preference("network.proxy.ssl", proxy_host)
             options.set_preference("network.proxy.ssl_port", int(proxy_port))
+    else:
+        print("No proxy configuration detected or not using proxy")
 
     # Add user agent to avoid detection
     options.set_preference(
@@ -73,20 +80,68 @@ def setup_driver():
     options.set_preference("dom.webdriver.enabled", False)
     options.set_preference("useAutomationExtension", False)
 
+    # Force disable GPU acceleration
+    os.environ["MOZ_HEADLESS_WIDTH"] = "1920"
+    os.environ["MOZ_HEADLESS_HEIGHT"] = "1080"
+
+    # Display Firefox version information
+    print("Checking Firefox installation...")
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["firefox-esr", "--version"], capture_output=True, text=True
+        )
+        print(f"Firefox version: {result.stdout}")
+    except Exception as e:
+        print(f"Error checking Firefox version: {e}")
+
+    # Display geckodriver version information
+    print("Checking geckodriver installation...")
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["/usr/local/bin/geckodriver", "--version"], capture_output=True, text=True
+        )
+        print(f"Geckodriver version: {result.stdout}")
+    except Exception as e:
+        print(f"Error checking geckodriver version: {e}")
+
     # Try to create the driver
     try:
         # Try to use the geckodriver in path
         if os.path.exists("/usr/local/bin/geckodriver"):
             print("Using geckodriver from /usr/local/bin/geckodriver")
-            service = Service(executable_path="/usr/local/bin/geckodriver")
+            service = Service(
+                executable_path="/usr/local/bin/geckodriver",
+                log_path="/app/geckodriver.log",
+            )
+
+            # Create Firefox profile directory with proper permissions
+            print("Setting up Firefox profile directory...")
+            os.makedirs("/tmp/firefox_profile", exist_ok=True)
+            os.chmod("/tmp/firefox_profile", 0o755)
+
+            options.set_preference("profile", "/tmp/firefox_profile")
             driver = webdriver.Firefox(service=service, options=options)
+            print("Firefox driver successfully created!")
         else:
             # Fallback to webdriver_manager
+            print("Geckodriver not found in /usr/local/bin, using webdriver_manager")
             driver = webdriver.Firefox(
                 service=Service(GeckoDriverManager().install()), options=options
             )
+            print("Firefox driver successfully created with webdriver_manager!")
     except Exception as e:
         print(f"Error creating driver: {str(e)}")
+
+        # Try to get detailed error information
+        if os.path.exists("/app/geckodriver.log"):
+            print("Content of geckodriver log:")
+            with open("/app/geckodriver.log", "r") as f:
+                print(f.read())
+
         raise
 
     return driver
