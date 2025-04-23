@@ -49,7 +49,7 @@ services:
         max-file: "3"
 
   cookie-generator:
-    profiles: ["miner-vpn"]
+    profiles: ["miner-vpn", "test-cookies"]
     image: cookie-generator:latest
     pull_policy: never
     build:
