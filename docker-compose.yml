@@ -87,7 +87,10 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - ./cookies:/home/masa
+      - type: bind
+        source: ./cookies
+        target: /home/masa
+        read_only: true
     depends_on:
       cookie-generator:
         condition: service_completed_successfully
