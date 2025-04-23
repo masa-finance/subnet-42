@@ -7,11 +7,13 @@ import uuid
 import random
 import string
 import base64
+import re
+import sys
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Twitter cookie names to extract
-COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
+COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token"]
 
 # Get output directory from environment variable
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "./cookies")
@@ -65,9 +67,9 @@ def get_auth_token(username, password):
 
     # Set up headers to look like a real browser
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
         "DNT": "1",
         "Connection": "keep-alive",
@@ -128,7 +130,7 @@ def get_auth_token(username, password):
         print(f"Error getting guest token: {str(e)}")
         return None
 
-    # Step 3: Start login flow to get the CSRF token
+    # Step 3: Start login flow to get the CSRF token and flow token
     try:
         print("Starting login flow...")
         response = session.get(
@@ -138,6 +140,11 @@ def get_auth_token(username, password):
             timeout=30,
         )
         response.raise_for_status()
+
+        # Extract flow_token from the page
+        flow_token_match = re.search(r'"flow_token":"([^"]+)"', response.text)
+        flow_token = flow_token_match.group(1) if flow_token_match else None
+        print(f"Extracted flow_token: {flow_token}")
 
         # The CSRF token is usually in the ct0 cookie
         ct0 = session.cookies.get("ct0")
@@ -151,73 +158,189 @@ def get_auth_token(username, password):
     for cookie in session.cookies:
         print(f"{cookie.name}: {cookie.value}")
 
-    # Multiple approaches to try to get more cookies
-
-    # Approach 1: Use the API to login
-    try:
-        print("\nAttempting login via API...")
-        api_headers = {
-            **headers,
-            "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
-            "Content-Type": "application/json",
-            "x-twitter-client-language": "en",
-            "x-twitter-active-user": "yes",
-        }
-
-        if ct0:
-            api_headers["x-csrf-token"] = ct0
-
-        response = session.post(
-            "https://api.twitter.com/1.1/account/login_verification.json",
-            headers=api_headers,
-            json={
-                "username": username,
-                "password": password,
-            },
-            proxies=proxies,
-            timeout=30,
-        )
-        print(f"Login API response status: {response.status_code}")
-    except Exception as e:
-        print(f"Expected login error (this is normal): {str(e)}")
-
-    # Approach 2: Use the oauth flow
-    try:
-        print("\nAttempting OAuth login flow...")
-        response = session.get(
-            "https://api.twitter.com/oauth/authenticate",
-            headers=headers,
-            proxies=proxies,
-            timeout=30,
-        )
-        print(f"OAuth response status: {response.status_code}")
-    except Exception as e:
-        print(f"OAuth error (this is normal): {str(e)}")
-
-    # Approach 3: Try mobile API login
-    try:
-        print("\nAttempting mobile API login...")
-        response = session.post(
-            "https://api.twitter.com/1.1/onboarding/task.json",
-            headers={
-                **headers,
-                "Content-Type": "application/json",
-                "X-Twitter-Client": "Twitter-iPhone",
-                "X-Twitter-Client-Version": "9.32.1",
-            },
-            json={
-                "flow_token": str(uuid.uuid4()),
-                "input_flow_data": {
-                    "flow_context": {"start_location": {"location": "deeplink"}}
+    # Step 4: Submit username to the flow
+    if flow_token:
+        try:
+            print("\nSubmitting username to login flow...")
+            response = session.post(
+                "https://api.twitter.com/1.1/onboarding/task.json",
+                headers={
+                    **headers,
+                    "authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+                    "content-type": "application/json",
+                    "x-csrf-token": ct0,
+                    "x-twitter-auth-type": "OAuth2Session",
+                    "x-twitter-active-user": "yes",
+                    "x-twitter-client-language": "en",
                 },
-                "subtask_versions": {},
-            },
-            proxies=proxies,
-            timeout=30,
-        )
-        print(f"Mobile API response status: {response.status_code}")
-    except Exception as e:
-        print(f"Mobile API error (this is normal): {str(e)}")
+                json={
+                    "input_flow_data": {
+                        "flow_context": {
+                            "debug_overrides": {},
+                            "start_location": {"location": "manual_link"},
+                        }
+                    },
+                    "subtask_versions": {
+                        "action_list": 2,
+                        "alert_dialog": 1,
+                        "app_download_cta": 1,
+                        "check_logged_in_account": 1,
+                        "choice_selection": 3,
+                        "contacts_live_sync_permission_prompt": 0,
+                        "cta": 7,
+                        "email_verification": 2,
+                        "end_flow": 1,
+                        "enter_date": 1,
+                        "enter_email": 2,
+                        "enter_password": 5,
+                        "enter_phone": 2,
+                        "enter_recaptcha": 1,
+                        "enter_text": 5,
+                        "enter_username": 2,
+                        "generic_urt": 3,
+                        "in_app_notification": 1,
+                        "interest_picker": 3,
+                        "js_instrumentation": 1,
+                        "menu_dialog": 1,
+                        "notifications_permission_prompt": 2,
+                        "open_account": 2,
+                        "open_home_timeline": 1,
+                        "open_link": 1,
+                        "phone_verification": 4,
+                        "privacy_options": 1,
+                        "security_key": 3,
+                        "select_avatar": 4,
+                        "select_banner": 2,
+                        "settings_list": 7,
+                        "show_code": 1,
+                        "sign_up": 2,
+                        "sign_up_review": 4,
+                        "tweet_selection_urt": 1,
+                        "update_users": 1,
+                        "upload_media": 1,
+                        "user_recommendations_list": 4,
+                        "user_recommendations_urt": 1,
+                        "wait_spinner": 3,
+                        "web_modal": 1,
+                    },
+                    "flow_token": flow_token,
+                },
+                proxies=proxies,
+                timeout=30,
+            )
+            response_data = response.json()
+
+            # Get the next flow_token
+            flow_token = response_data.get("flow_token")
+
+            # Check if there's a field for entering username
+            tasks = response_data.get("subtasks", [])
+            has_username_field = any(
+                task.get("subtask_id") == "LoginEnterUserIdentifier" for task in tasks
+            )
+
+            if has_username_field and flow_token:
+                # Now submit the username
+                print(f"Submitting username: {username}")
+                response = session.post(
+                    "https://api.twitter.com/1.1/onboarding/task.json",
+                    headers={
+                        **headers,
+                        "authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+                        "content-type": "application/json",
+                        "x-csrf-token": ct0,
+                        "x-twitter-auth-type": "OAuth2Session",
+                        "x-twitter-active-user": "yes",
+                        "x-twitter-client-language": "en",
+                    },
+                    json={
+                        "flow_token": flow_token,
+                        "subtask_inputs": [
+                            {
+                                "subtask_id": "LoginEnterUserIdentifier",
+                                "settings_list": {
+                                    "setting_responses": [
+                                        {
+                                            "key": "user_identifier",
+                                            "response_data": {
+                                                "text_data": {"result": username}
+                                            },
+                                        }
+                                    ],
+                                    "link": "next_link",
+                                },
+                            }
+                        ],
+                    },
+                    proxies=proxies,
+                    timeout=30,
+                )
+
+                # Get the next flow_token for password submission
+                response_data = response.json()
+                flow_token = response_data.get("flow_token")
+
+                # Check if there's a field for entering password
+                tasks = response_data.get("subtasks", [])
+                has_password_field = any(
+                    task.get("subtask_id") == "LoginEnterPassword" for task in tasks
+                )
+
+                if has_password_field and flow_token:
+                    # Now submit the password
+                    print(f"Submitting password for {username}")
+                    response = session.post(
+                        "https://api.twitter.com/1.1/onboarding/task.json",
+                        headers={
+                            **headers,
+                            "authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+                            "content-type": "application/json",
+                            "x-csrf-token": ct0,
+                            "x-twitter-auth-type": "OAuth2Session",
+                            "x-twitter-active-user": "yes",
+                            "x-twitter-client-language": "en",
+                        },
+                        json={
+                            "flow_token": flow_token,
+                            "subtask_inputs": [
+                                {
+                                    "subtask_id": "LoginEnterPassword",
+                                    "enter_password": {
+                                        "password": password,
+                                        "link": "next_link",
+                                    },
+                                }
+                            ],
+                        },
+                        proxies=proxies,
+                        timeout=30,
+                    )
+
+                    # Final flow completion
+                    response_data = response.json()
+                    flow_token = response_data.get("flow_token")
+
+                    if flow_token:
+                        # Final account validation step
+                        print("Final authentication step...")
+                        response = session.post(
+                            "https://api.twitter.com/1.1/onboarding/task.json",
+                            headers={
+                                **headers,
+                                "authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+                                "content-type": "application/json",
+                                "x-csrf-token": ct0,
+                                "x-twitter-auth-type": "OAuth2Session",
+                                "x-twitter-active-user": "yes",
+                                "x-twitter-client-language": "en",
+                            },
+                            json={"flow_token": flow_token},
+                            proxies=proxies,
+                            timeout=30,
+                        )
+                        print(f"Final auth response status: {response.status_code}")
+        except Exception as e:
+            print(f"Error in login flow: {str(e)}")
 
     # Print the final cookies
     print("\nFinal cookies after login attempts:")
@@ -243,16 +366,19 @@ def get_auth_token(username, password):
             "personalization_id"
         ] % generate_random_base64(16)
         synthetic_values["personalization_id"] = personalization_value
+        print("WARNING: Using synthetic personalization_id")
 
     # KDT is a random string with k prefix
     if "kdt" not in cookie_values:
         kdt_value = COOKIE_TEMPLATES["kdt"] % generate_random_string(20)
         synthetic_values["kdt"] = kdt_value
+        print("WARNING: Using synthetic kdt")
 
     # TWID is a string with u= prefix
     if "twid" not in cookie_values:
         twid_value = COOKIE_TEMPLATES["twid"] % generate_random_string(15)
         synthetic_values["twid"] = twid_value
+        print("WARNING: Using synthetic twid")
 
     # CT0 is a hex string
     if "ct0" not in cookie_values:
@@ -260,6 +386,7 @@ def get_auth_token(username, password):
             random.choices("0123456789abcdef", k=32)
         )
         synthetic_values["ct0"] = ct0_value
+        print("WARNING: Using synthetic ct0")
 
     # Auth token is a complex hex string
     if "auth_token" not in cookie_values:
@@ -267,11 +394,13 @@ def get_auth_token(username, password):
             random.choices("0123456789abcdef", k=40)
         )
         synthetic_values["auth_token"] = auth_token_value
+        print("WARNING: Using synthetic auth_token")
 
     # ATT is a short random string
     if "att" not in cookie_values:
         att_value = COOKIE_TEMPLATES["att"] % generate_random_string(10)
         synthetic_values["att"] = att_value
+        print("WARNING: Using synthetic att")
 
     # Add synthetic values to our cookie collection
     for name, value in synthetic_values.items():
@@ -280,9 +409,18 @@ def get_auth_token(username, password):
 
     print(f"Final cookie count: {len(cookie_values)}")
 
+    # Check if we're using ALL synthetic values, which won't work
+    if len(synthetic_values) >= 5:
+        print(
+            "\n⚠️ WARNING: Using mostly synthetic cookies! Authentication will likely fail ⚠️"
+        )
+        print(
+            "Please consider manually extracting cookies from your browser or using a headless browser approach."
+        )
+
     # Generate a standard format for cookies
     cookie_list = []
-    for name in COOKIE_NAMES:
+    for name in set(list(COOKIE_NAMES) + ["att"]):
         value = cookie_values.get(name, "<YOUR_VALUE_HERE>")
         cookie_list.append(create_cookie_template(name, value))
 
