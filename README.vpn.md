@@ -27,41 +27,50 @@ your_expressvpn_password
 4. Rename it to `config.ovpn` and place it in your project root
 5. Edit the file to remove any `auth-user-pass` lines
 
-### 2️⃣ Configure Twitter Accounts
+### 2️⃣ Generate Twitter Cookies
 
-Add your Twitter account credentials to your .env file:
+First, add your Twitter account credentials to your .env file:
 
 ```
 # Add your Twitter accounts in this format
 TWITTER_ACCOUNTS="username1:password1,username2:password2"
 ```
 
-The system will automatically log in to Twitter and generate the required cookie files when you start the services using our built-in cookie-generator container.
+Then, run the cookie generator service by itself:
 
-### 3️⃣ Launch Everything
+```bash
+# Create the cookies directory first if it doesn't exist
+mkdir -p cookies
 
-Start your services with:
+# Run the cookie generator
+docker compose --profile cookies up
+```
+
+This will:
+
+- Build and run the cookie-generator container
+- Log into your Twitter accounts using Firefox in headless mode
+- Extract the necessary authentication cookies
+- Save them to the `cookies/` directory
+- Exit once cookies are generated
+
+Wait until this process completes before proceeding to the next step.
+
+### 3️⃣ Launch the Miner with VPN
+
+After generating the cookies, start the miner and VPN services:
 
 ```bash
 docker compose --profile miner-vpn up -d
 ```
 
-This will start four containers:
+This will start three containers:
 
 - `neuron`: Your subnet-42 miner (accessible on port 8091)
-- `cookie-generator`: Automatically logs in to Twitter and extracts cookies to the `cookies/` directory
 - `worker-vpn`: Your TEE worker with VPN routing (accessible on port 8080)
 - `vpn`: OpenVPN client with TinyProxy (routes worker traffic through VPN)
 
-The cookie-generator service will:
-
-- Run automatically when you start the services
-- Log into your Twitter accounts using Firefox in headless mode
-- Extract the necessary authentication cookies
-- Save them to the `cookies/` directory (created automatically)
-- Exit once cookies are generated
-
-The worker-vpn service will wait for the cookie files before starting.
+The worker-vpn service will use the cookie files previously generated.
 
 ## 🧪 Testing Your Setup
 
@@ -102,13 +111,13 @@ If you encounter issues with automatic cookie generation:
 
 ```bash
 # View cookie generator logs
-docker compose --profile miner-vpn logs cookie-generator
+docker compose --profile cookies logs
 
 # Check if cookies were generated
-docker exec worker-vpn ls -la /app/cookies
+ls -la ./cookies/
 
 # Restart cookie generation if needed
-docker compose --profile miner-vpn up --force-recreate cookie-generator
+docker compose --profile cookies up --force-recreate
 ```
 
 ### "LoginAcid" Error
