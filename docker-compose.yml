@@ -85,14 +85,8 @@ services:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     volumes:
-      - type: bind
-        source: ./.env
-        target: /home/masa/.env
-        read_only: true
-      - type: bind
-        source: ./cookies
-        target: /home/masa
-        read_only: true
+      - ./.env:/home/masa/.env
+      - ./cookies:/home/masa
     depends_on:
       vpn:
         condition: service_started
