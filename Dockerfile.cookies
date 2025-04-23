@@ -43,5 +43,8 @@ RUN mkdir -p /app/cookies
 # Copy the script 
 COPY scripts/cookie_grabber.py /app/cookie_grabber.py
 
+# Set default OUTPUT_DIR
+ENV OUTPUT_DIR=/app
+
 # Set the Python script as the entrypoint
 ENTRYPOINT ["python", "/app/cookie_grabber.py"]

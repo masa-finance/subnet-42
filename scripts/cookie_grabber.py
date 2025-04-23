@@ -14,6 +14,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 # Twitter cookie names to extract
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 
+# Get output directory from environment variable
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/app")
+
 
 def create_cookie_template(name, value):
     """Create a standard cookie template with the given name and value."""
@@ -267,8 +270,10 @@ def process_account(username, password):
     output_file = f"{username}_twitter_cookies.json"
     print(f"Will save cookies to: {output_file}")
     print(f"Current working directory: {os.getcwd()}")
-    print(f"Contents of current directory: {os.listdir('.')}")
-    print(f"Contents of cookies directory: {os.listdir('./cookies')}")
+    print(f"Output directory: {OUTPUT_DIR}")
+
+    # Create output directory if it doesn't exist
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     driver = setup_driver()
 
@@ -297,15 +302,15 @@ def process_account(username, password):
             cookies_json = generate_cookies_json(cookie_values)
             formatted_json = json.dumps(cookies_json, indent=2)
 
-            # Save to a file in the cookies directory
-            output_path = os.path.join("./cookies", output_file)
+            # Save to a file in the output directory
+            output_path = os.path.join(OUTPUT_DIR, output_file)
             print(f"Saving cookies to path: {output_path}")
 
             with open(output_path, "w") as f:
                 f.write(formatted_json)
             print(f"Cookies JSON saved to {output_path}")
             print(
-                f"After writing, contents of cookies directory: {os.listdir('./cookies')}"
+                f"After writing, contents of output directory: {os.listdir(OUTPUT_DIR)}"
             )
         else:
             print("Failed to login to Twitter.")
@@ -315,9 +320,6 @@ def process_account(username, password):
 
 def main():
     """Main function to process Twitter accounts from environment variable."""
-    # Create cookies directory if it doesn't exist
-    os.makedirs("./cookies", exist_ok=True)
-
     # Get Twitter accounts from environment variable
     twitter_accounts_str = os.environ.get("TWITTER_ACCOUNTS", "")
 

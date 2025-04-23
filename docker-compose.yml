@@ -57,9 +57,10 @@ services:
       dockerfile: Dockerfile.cookies
     volumes:
       - ./.env:/app/.env
-      - cookie-data:/app/cookies
+      - cookie-data:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - OUTPUT_DIR=/app
     restart: "no"
     logging:
       driver: json-file
