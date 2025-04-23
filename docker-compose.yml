@@ -49,7 +49,7 @@ services:
         max-file: "3"
 
   cookie-generator:
-    profiles: ["miner-vpn"]
+    profiles: ["miner-vpn", "test-cookies"]
     image: cookie-generator:latest
     pull_policy: never
     build:
@@ -60,11 +60,6 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
-      - http_proxy=http://vpn:${VPN_PORT:-3128}
-      - https_proxy=http://vpn:${VPN_PORT:-3128}
-    depends_on:
-      vpn:
-        condition: service_started
     restart: "no"
     logging:
       driver: json-file
@@ -104,7 +99,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner-vpn"]
+    profiles: ["miner-vpn", "test-cookies"]
     image: ubuntu:22.04
     deploy:
       resources:
@@ -120,14 +115,50 @@ services:
     volumes:
       - ./config.ovpn:/etc/openvpn/config/config.ovpn
       - ./auth.txt:/etc/openvpn/config/auth.txt
-    command: >
-      bash -c "apt-get update && 
-      apt-get install -y openvpn curl iptables tinyproxy &&
-      echo 'net.ipv4.ip_forward=1' > /etc/sysctl.conf &&
-      sysctl -p &&
-      echo 'Allow 0.0.0.0/0' >> /etc/tinyproxy/tinyproxy.conf &&
-      sed -i 's/Port 8888/Port ${VPN_PORT:-3128}/g' /etc/tinyproxy/tinyproxy.conf &&
-      service tinyproxy restart &&
-      iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
-      openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3"
+    command: |
+      bash -c '
+        apt-get update && 
+        apt-get install -y openvpn curl iptables tinyproxy &&
+        echo "net.ipv4.ip_forward=1" > /etc/sysctl.conf &&
+        sysctl -p &&
+        echo "Allow 0.0.0.0/0" >> /etc/tinyproxy/tinyproxy.conf &&
+        sed -i "s/Port 8888/Port ${VPN_PORT:-3128}/g" /etc/tinyproxy/tinyproxy.conf &&
+        service tinyproxy restart &&
+        iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE &&
+        
+        # Start OpenVPN in the background and redirect output to a log file
+        openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3 > /var/log/openvpn.log 2>&1 &
+        
+        # Wait until OpenVPN is initialized or timeout after 60 seconds
+        echo "Waiting for OpenVPN to initialize..."
+        timeout=60
+        counter=0
+        initialized=0
+        
+        while [ $counter -lt $timeout ]; do
+          if grep -q "Initialization Sequence Completed" /var/log/openvpn.log; then
+            echo "OpenVPN initialization completed!"
+            touch /tmp/vpn_ready
+            initialized=1
+            break
+          fi
+          sleep 2
+          counter=$((counter+2))
+          echo "Still waiting for OpenVPN... ($counter seconds)"
+        done
+        
+        if [ $initialized -eq 0 ]; then
+          echo "Timed out waiting for OpenVPN initialization"
+          exit 1
+        fi
+        
+        # Keep container running
+        tail -f /dev/null
+      '
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "grep", "-q", "Initialization Sequence Completed", "/var/log/openvpn.log"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
