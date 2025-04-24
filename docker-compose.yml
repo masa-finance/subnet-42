@@ -3,6 +3,7 @@ services:
     profiles: ["miner", "miner-vpn", "validator", "validator-tee"]
     image: masaengineering/subnet-42:latest
     pull_policy: always
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
@@ -17,6 +18,9 @@ services:
         limits:
           memory: ${NEURON_MEMORY_LIMIT:-0}
           cpus: ${NEURON_CPU_LIMIT:-0}
+        reservations:
+          memory: ${NEURON_MEMORY_RESERVATION:-0}
+          cpus: ${NEURON_CPU_RESERVATION:-0}
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
@@ -31,36 +35,21 @@ services:
     profiles: ["miner", "validator-tee"]
     image: masaengineering/tee-worker:main
     pull_policy: always
+    restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-0}
           cpus: ${WORKER_CPU_LIMIT:-0}
+        reservations:
+          memory: ${WORKER_MEMORY_RESERVATION:-0}
+          cpus: ${WORKER_CPU_RESERVATION:-0}
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  cookie-generator:
-    profiles: ["cookies"]
-    image: cookie-generator:latest
-    pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile.cookies
-    volumes:
-      - ./.env:/app/.env
-      - ./cookies:/app/cookies
-    environment:
-      - PYTHONUNBUFFERED=1
-    restart: "no"
     logging:
       driver: json-file
       options:
@@ -76,6 +65,9 @@ services:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-0}
           cpus: ${WORKER_CPU_LIMIT:-0}
+        reservations:
+          memory: ${WORKER_MEMORY_RESERVATION:-0}
+          cpus: ${WORKER_CPU_RESERVATION:-0}
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
@@ -85,14 +77,8 @@ services:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     volumes:
-      - type: bind
-        source: ./.env
-        target: /home/masa/.env
-        read_only: true
-      - type: bind
-        source: ./cookies
-        target: /home/masa/cookies
-        read_only: true
+      - ./.env:/home/masa/.env
+      - ./cookies:/home/masa
     depends_on:
       vpn:
         condition: service_started
@@ -105,11 +91,7 @@ services:
   vpn:
     profiles: ["miner-vpn"]
     image: ubuntu:22.04
-    deploy:
-      resources:
-        limits:
-          memory: ${VPN_MEMORY_LIMIT:-0}
-          cpus: ${VPN_CPU_LIMIT:-0}
+    restart: unless-stopped
     cap_add:
       - NET_ADMIN
     devices:
@@ -136,10 +118,28 @@ services:
         # Keep container running
         tail -f /dev/null
       '
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-s", "http://localhost:${VPN_PORT:-3128}", "||", "exit", "1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  cookie-generator:
+    profiles: ["cookies"]
+    image: cookie-generator:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile.cookies
+    volumes:
+      - ./.env:/app/.env
+      - ./cookies:/app/cookies
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
