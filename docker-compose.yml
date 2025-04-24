@@ -118,7 +118,6 @@ services:
         # Keep container running
         tail -f /dev/null
       '
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-s", "http://localhost:${VPN_PORT:-3128}", "||", "exit", "1"]
       interval: 10s
