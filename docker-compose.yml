@@ -18,6 +18,9 @@ services:
         limits:
           memory: ${NEURON_MEMORY_LIMIT:-0}
           cpus: ${NEURON_CPU_LIMIT:-0}
+        reservations:
+          memory: ${NEURON_MEMORY_RESERVATION:-0}
+          cpus: ${NEURON_CPU_RESERVATION:-0}
     ports:
       - "${VALIDATOR_PORT:-8090}:${VALIDATOR_PORT:-8090}"
       - "${MINER_PORT:-8091}:${MINER_PORT:-8091}"
@@ -38,31 +41,15 @@ services:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-0}
           cpus: ${WORKER_CPU_LIMIT:-0}
+        reservations:
+          memory: ${WORKER_MEMORY_RESERVATION:-0}
+          cpus: ${WORKER_CPU_RESERVATION:-0}
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  cookie-generator:
-    profiles: ["cookies"]
-    image: cookie-generator:latest
-    pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile.cookies
-    volumes:
-      - ./.env:/app/.env
-      - ./cookies:/app/cookies
-    environment:
-      - PYTHONUNBUFFERED=1
-    restart: "no"
     logging:
       driver: json-file
       options:
@@ -78,6 +65,9 @@ services:
         limits:
           memory: ${WORKER_MEMORY_LIMIT:-0}
           cpus: ${WORKER_CPU_LIMIT:-0}
+        reservations:
+          memory: ${WORKER_MEMORY_RESERVATION:-0}
+          cpus: ${WORKER_CPU_RESERVATION:-0}
     ports:
       - "${TEE_PORT:-8080}:${TEE_PORT:-8080}"
     environment:
@@ -101,11 +91,6 @@ services:
   vpn:
     profiles: ["miner-vpn"]
     image: ubuntu:22.04
-    deploy:
-      resources:
-        limits:
-          memory: ${VPN_MEMORY_LIMIT:-0}
-          cpus: ${VPN_CPU_LIMIT:-0}
     cap_add:
       - NET_ADMIN
     devices:
@@ -139,3 +124,22 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  cookie-generator:
+    profiles: ["cookies"]
+    image: cookie-generator:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile.cookies
+    volumes:
+      - ./.env:/app/.env
+      - ./cookies:/app/cookies
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
