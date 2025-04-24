@@ -91,6 +91,7 @@ services:
   vpn:
     profiles: ["miner-vpn"]
     image: ubuntu:22.04
+    restart: unless-stopped
     cap_add:
       - NET_ADMIN
     devices:
