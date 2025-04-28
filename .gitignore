@@ -1,4 +1,3 @@
-
 /venv
 prompt.md
 currentwork.md
@@ -20,3 +19,10 @@ data/*
 *.pyc
 notebooks/.DS_Store
 .conda
+
+config.ovpn
+auth.txt
+cookies/
+
+.env*
+!.env.example

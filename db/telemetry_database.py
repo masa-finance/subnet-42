@@ -7,6 +7,7 @@ class TelemetryDatabase:
         self.db_path = db_path
         self.lock = Lock()
         self._create_table()
+        self._ensure_worker_id_column()
 
     def _create_table(self):
         with self.lock, sqlite3.connect(self.db_path) as conn:
@@ -28,11 +29,33 @@ class TelemetryDatabase:
                     twitter_returned_tweets INT,
                     twitter_scrapes INT,
                     web_errors INT,
-                    web_success INT
+                    web_success INT,
+                    worker_id TEXT
                 )
             """
             )
             conn.commit()
+
+    def _ensure_worker_id_column(self):
+        """
+        Ensure the worker_id column exists in the telemetry table.
+        This handles database migrations for existing databases.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Check if worker_id column exists
+            cursor.execute("PRAGMA table_info(telemetry)")
+            columns = [col[1] for col in cursor.fetchall()]
+
+            if "worker_id" not in columns:
+                # Add the worker_id column if it doesn't exist
+                cursor.execute(
+                    """
+                    ALTER TABLE telemetry
+                    ADD COLUMN worker_id TEXT
+                    """
+                )
+                conn.commit()
 
     def add_telemetry(self, telemetry_data):
         with self.lock, sqlite3.connect(self.db_path) as conn:
@@ -41,8 +64,9 @@ class TelemetryDatabase:
                 """
                 INSERT INTO telemetry (hotkey, uid, boot_time, last_operation_time, current_time, 
                 twitter_auth_errors, twitter_errors, twitter_ratelimit_errors, twitter_returned_other, 
-                twitter_returned_profiles, twitter_returned_tweets, twitter_scrapes, web_errors, web_success) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                twitter_returned_profiles, twitter_returned_tweets, twitter_scrapes, web_errors, web_success,
+                worker_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     telemetry_data.hotkey,
@@ -59,6 +83,7 @@ class TelemetryDatabase:
                     telemetry_data.twitter_scrapes,
                     telemetry_data.web_errors,
                     telemetry_data.web_success,
+                    telemetry_data.worker_id,
                 ),
             )
             conn.commit()
@@ -102,3 +127,16 @@ class TelemetryDatabase:
             )
             hotkeys = [row[0] for row in cursor.fetchall()]
             return hotkeys
+
+    def delete_telemetry_by_hotkey(self, hotkey):
+        """Delete all telemetry entries for a specific hotkey."""
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM telemetry WHERE hotkey = ?
+                """,
+                (hotkey,),
+            )
+            conn.commit()
+            return cursor.rowcount  # Return the number of rows deleted

@@ -105,7 +105,15 @@ class WeightsManager:
         hotkeys_to_score = (
             self.validator.telemetry_storage.get_all_hotkeys_with_telemetry()
         )
+        # Get all hotkeys from metagraph to ensure we include those without telemetry
+        all_hotkeys = []
+        for node_idx, node in enumerate(self.validator.metagraph.nodes):
+            node_data = self.validator.metagraph.nodes[node]
+            hotkey = node_data.hotkey
+            all_hotkeys.append((node_data.node_id, hotkey))
 
+        # Process hotkeys with telemetry data
+        processed_hotkeys = set()
         for hotkey in hotkeys_to_score:
             node_telemetry = self.validator.telemetry_storage.get_telemetry_by_hotkey(
                 hotkey
@@ -121,45 +129,156 @@ class WeightsManager:
                 latest = sorted_telemetry[0]
                 oldest = sorted_telemetry[-1]
 
-                # Calculate deltas between latest and oldest values
-                delta_data = NodeData(
-                    hotkey=hotkey,
-                    uid=latest.uid,
-                    timestamp=latest.timestamp,
-                    boot_time=latest.boot_time - oldest.boot_time,
-                    last_operation_time=(
-                        latest.last_operation_time - oldest.last_operation_time
-                    ),
-                    current_time=latest.current_time - oldest.current_time,
-                    twitter_auth_errors=(
-                        latest.twitter_auth_errors - oldest.twitter_auth_errors
-                    ),
-                    twitter_errors=(latest.twitter_errors - oldest.twitter_errors),
-                    twitter_ratelimit_errors=(
-                        latest.twitter_ratelimit_errors
-                        - oldest.twitter_ratelimit_errors
-                    ),
-                    twitter_returned_other=(
-                        latest.twitter_returned_other - oldest.twitter_returned_other
-                    ),
-                    twitter_returned_profiles=(
-                        latest.twitter_returned_profiles
-                        - oldest.twitter_returned_profiles
-                    ),
-                    twitter_returned_tweets=(
-                        latest.twitter_returned_tweets - oldest.twitter_returned_tweets
-                    ),
-                    twitter_scrapes=(latest.twitter_scrapes - oldest.twitter_scrapes),
-                    web_errors=latest.web_errors - oldest.web_errors,
-                    web_success=latest.web_success - oldest.web_success,
-                )
+                # Check for negative deltas (TEE restart)
+                has_negative_delta = False
 
-                delta_node_data.append(delta_data)
-                logger.debug(f"Calculated deltas for {hotkey}: {delta_data}")
+                # Calculate and check key metrics
+                boot_time_delta = latest.boot_time - oldest.boot_time
+                last_operation_time_delta = (
+                    latest.last_operation_time - oldest.last_operation_time
+                )
+                twitter_auth_errors_delta = (
+                    latest.twitter_auth_errors - oldest.twitter_auth_errors
+                )
+                twitter_errors_delta = latest.twitter_errors - oldest.twitter_errors
+                twitter_ratelimit_errors_delta = (
+                    latest.twitter_ratelimit_errors - oldest.twitter_ratelimit_errors
+                )
+                twitter_returned_other_delta = (
+                    latest.twitter_returned_other - oldest.twitter_returned_other
+                )
+                twitter_returned_profiles_delta = (
+                    latest.twitter_returned_profiles - oldest.twitter_returned_profiles
+                )
+                twitter_returned_tweets_delta = (
+                    latest.twitter_returned_tweets - oldest.twitter_returned_tweets
+                )
+                twitter_scrapes_delta = latest.twitter_scrapes - oldest.twitter_scrapes
+                web_errors_delta = latest.web_errors - oldest.web_errors
+                web_success_delta = latest.web_success - oldest.web_success
+
+                # Check if any delta is negative, indicating a TEE restart
+                if (
+                    boot_time_delta < 0
+                    or last_operation_time_delta < 0
+                    or twitter_auth_errors_delta < 0
+                    or twitter_errors_delta < 0
+                    or twitter_ratelimit_errors_delta < 0
+                    or twitter_returned_other_delta < 0
+                    or twitter_returned_profiles_delta < 0
+                    or twitter_returned_tweets_delta < 0
+                    or twitter_scrapes_delta < 0
+                    or web_errors_delta < 0
+                    or web_success_delta < 0
+                ):
+
+                    has_negative_delta = True
+                    logger.warning(
+                        f"Detected negative delta for {hotkey}, indicating TEE restart. Deleting telemetry data."
+                    )
+                    # Delete all telemetry for this node
+                    self.validator.telemetry_storage.delete_telemetry_by_hotkey(hotkey)
+
+                if not has_negative_delta:
+                    # Calculate deltas between latest and oldest values, ensuring no negatives
+                    delta_data = NodeData(
+                        hotkey=hotkey,
+                        uid=latest.uid,
+                        worker_id=latest.worker_id,
+                        timestamp=latest.timestamp,
+                        boot_time=max(0, boot_time_delta),
+                        last_operation_time=max(0, last_operation_time_delta),
+                        current_time=latest.current_time - oldest.current_time,
+                        twitter_auth_errors=max(0, twitter_auth_errors_delta),
+                        twitter_errors=max(0, twitter_errors_delta),
+                        twitter_ratelimit_errors=max(0, twitter_ratelimit_errors_delta),
+                        twitter_returned_other=max(0, twitter_returned_other_delta),
+                        twitter_returned_profiles=max(
+                            0, twitter_returned_profiles_delta
+                        ),
+                        twitter_returned_tweets=max(0, twitter_returned_tweets_delta),
+                        twitter_scrapes=max(0, twitter_scrapes_delta),
+                        web_errors=max(0, web_errors_delta),
+                        web_success=max(0, web_success_delta),
+                    )
+
+                    delta_node_data.append(delta_data)
+                    processed_hotkeys.add(hotkey)
+                    logger.debug(f"Calculated deltas for {hotkey}: {delta_data}")
+                else:
+                    # Create empty telemetry data for this node since we deleted its telemetry
+                    uid = next((uid for uid, hk in all_hotkeys if hk == hotkey), 0)
+                    delta_data = NodeData(
+                        hotkey=hotkey,
+                        uid=uid,
+                        worker_id="",
+                        timestamp=0,
+                        boot_time=0,
+                        last_operation_time=0,
+                        current_time=0,
+                        twitter_auth_errors=0,
+                        twitter_errors=0,
+                        twitter_ratelimit_errors=0,
+                        twitter_returned_other=0,
+                        twitter_returned_profiles=0,
+                        twitter_returned_tweets=0,
+                        twitter_scrapes=0,
+                        web_errors=0,
+                        web_success=0,
+                    )
+                    delta_node_data.append(delta_data)
+                    processed_hotkeys.add(hotkey)
             else:
                 logger.debug(
                     f"Not enough telemetry data for {hotkey} to calculate deltas"
                 )
+                # Find UID for this hotkey
+                uid = next((uid for uid, hk in all_hotkeys if hk == hotkey), 0)
+                # Add empty telemetry for hotkeys with insufficient data
+                delta_data = NodeData(
+                    hotkey=hotkey,
+                    uid=uid,
+                    worker_id="",
+                    timestamp=0,
+                    boot_time=0,
+                    last_operation_time=0,
+                    current_time=0,
+                    twitter_auth_errors=0,
+                    twitter_errors=0,
+                    twitter_ratelimit_errors=0,
+                    twitter_returned_other=0,
+                    twitter_returned_profiles=0,
+                    twitter_returned_tweets=0,
+                    twitter_scrapes=0,
+                    web_errors=0,
+                    web_success=0,
+                )
+                delta_node_data.append(delta_data)
+                processed_hotkeys.add(hotkey)
+
+        # Add empty telemetry for hotkeys without any telemetry data
+        for uid, hotkey in all_hotkeys:
+            if hotkey not in processed_hotkeys:
+                logger.debug(f"Adding empty telemetry for {hotkey} (uid: {uid})")
+                delta_data = NodeData(
+                    hotkey=hotkey,
+                    uid=uid,
+                    worker_id="",
+                    timestamp=0,
+                    boot_time=0,
+                    last_operation_time=0,
+                    current_time=0,
+                    twitter_auth_errors=0,
+                    twitter_errors=0,
+                    twitter_ratelimit_errors=0,
+                    twitter_returned_other=0,
+                    twitter_returned_profiles=0,
+                    twitter_returned_tweets=0,
+                    twitter_scrapes=0,
+                    web_errors=0,
+                    web_success=0,
+                )
+                delta_node_data.append(delta_data)
 
         logger.info(f"Calculated deltas for {len(delta_node_data)} nodes")
         return delta_node_data
@@ -242,15 +361,16 @@ class WeightsManager:
                 logger.error(
                     f"Node with hotkey '{node.hotkey}' not found in metagraph."
                 )
-
-        uids = sorted(miner_scores.keys())
+        # Convert string UIDs to integers for proper sorting, if needed
+        uids = sorted(
+            miner_scores.keys(),
+            key=lambda x: int(x) if isinstance(x, str) and x.isdigit() else x,
+        )
         weights = [float(miner_scores[uid]) for uid in uids]
 
         logger.info(f"Completed weight calculation for {len(uids)} nodes")
-        logger.info(f"UIDs: {uids}")
-        logger.info(f"weights: {weights}")
-
-        logger.info(f"Weights: {[f'{w:.4f}' for w in weights]}")
+        logger.debug(f"UIDs: {uids}")
+        logger.debug(f"weights: {weights}")
 
         return uids, weights
 
@@ -312,8 +432,9 @@ class WeightsManager:
                 )
 
                 if success:
-                    logger.info(f"UIDS: {uids}")
-                    logger.info(f"Scores: {scores}")
+
+                    logger.debug(f"UIDS: {uids}")
+                    logger.debug(f"Scores: {scores}")
                     logger.info("✅ Successfully set weights!")
                     return
                 else:

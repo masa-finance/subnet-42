@@ -11,6 +11,12 @@ logger = get_logger(__name__)
 class TEETelemetryClient:
     def __init__(self, tee_worker_address):
         self.tee_worker_address = tee_worker_address
+        # Get alternative TEE worker address for result submission from environment variable
+        self.result_tee_worker_address = os.getenv(
+            "TELEMETRY_RESULT_WORKER_ADDRESS", self.tee_worker_address
+        )
+        logger.debug(f"TEE worker address: {self.tee_worker_address}")
+        logger.debug(f"Result TEE worker address: {self.result_tee_worker_address}")
 
     async def generate_telemetry_job(self):
         async with httpx.AsyncClient(verify=False) as client:
@@ -51,7 +57,7 @@ class TEETelemetryClient:
             signature = content.decode("utf-8")
             return signature
 
-    async def return_telemetry_job(self, sig, result_sig):
+    async def return_telemetry_job(self, sig, result_sig, routing_table=None):
         # Remove quotes and backslashes from signatures
         if result_sig.startswith('"') and result_sig.endswith('"'):
             result_sig = result_sig[1:-1]
@@ -61,16 +67,44 @@ class TEETelemetryClient:
             sig = sig[1:-1]
         sig = sig.replace("\\", "")
 
-        async with httpx.AsyncClient(verify=False) as client:
-            response = await client.post(
-                f"{self.tee_worker_address}/job/result",
-                headers={"Content-Type": "application/json"},
-                json={"encrypted_result": result_sig, "encrypted_request": sig},
+        # Use the result TEE worker address instead of the original one
+        logger.debug(f"Submitting result to: {self.result_tee_worker_address}")
+        try:
+            async with httpx.AsyncClient(verify=False) as client:
+                response = await client.post(
+                    f"{self.result_tee_worker_address}/job/result",
+                    headers={"Content-Type": "application/json"},
+                    json={"encrypted_result": result_sig, "encrypted_request": sig},
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(
+                f"Failed to submit telemetry result to {self.result_tee_worker_address}: {str(e)}"
             )
-            response.raise_for_status()
-            return response.json()
 
-    async def execute_telemetry_sequence(self, max_retries=3, delay=5):
+            # Add the failed TEE worker to unregistered list if routing_table is provided
+            if (
+                routing_table is not None
+                and self.result_tee_worker_address != self.tee_worker_address
+            ):
+                # Get current unregistered addresses
+                unregistered_addrs = routing_table.get_all_unregistered_tee_addresses()
+
+                # Only add if not already in the unregistered list
+                if self.result_tee_worker_address not in unregistered_addrs:
+                    logger.warning(
+                        f"Adding failed result TEE worker to unregistered list: {self.result_tee_worker_address}"
+                    )
+                    routing_table.add_unregistered_tee(
+                        address=self.result_tee_worker_address,
+                        hotkey="validator",  # Using "validator" as hotkey since this isn't associated with a specific miner
+                    )
+            raise
+
+    async def execute_telemetry_sequence(
+        self, max_retries=3, delay=5, routing_table=None
+    ):
         retries = 0
         while retries < max_retries:
             try:
@@ -87,14 +121,15 @@ class TEETelemetryClient:
                 logger.debug(f"Job status signature: {status_sig}")
 
                 logger.debug("Returning telemetry job result...")
-                result = await self.return_telemetry_job(sig, status_sig)
+                result = await self.return_telemetry_job(sig, status_sig, routing_table)
                 logger.debug(f"Telemetry job result: {result}")
 
                 return result
             except Exception as e:
-                logger.error(
-                    f"Error in telemetry sequence: {self.tee_worker_address} {e}"
-                )
+                if os.getenv("DEBUG", "false").lower() == "true":
+                    logger.warning(
+                        f"Error in telemetry sequence: {self.tee_worker_address} {e}"
+                    )
                 retries += 1
                 logger.debug(
                     f"Retrying... {self.tee_worker_address} ({retries}/{max_retries})"

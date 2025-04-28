@@ -36,7 +36,6 @@ class AgentMiner:
             self.wallet_name, self.hotkey_name
         )
 
-        
         self.httpx_client: Optional[httpx.AsyncClient] = None
         self.netuid = int(os.getenv("NETUID", "42"))
         self.subtensor_network = os.getenv("SUBTENSOR_NETWORK")
@@ -94,14 +93,17 @@ class AgentMiner:
             node = self.node()
             logger.debug(f"Retrieved node from metagraph: {node}")
 
+            # Use override_external_ip if provided, else use self.external_ip
+            external_ip = os.getenv("OVERRIDE_EXTERNAL_IP", self.external_ip)
+
             if node:
-                if node.ip != self.external_ip or node.port != self.port:
+                if node.ip != external_ip or node.port != self.port:
                     logger.info(
                         f"IP/Port mismatch detected - Current chain values: "
                         f"IP={node.ip}, Port={node.port}"
                     )
                     logger.info(
-                        f"Updating chain with new values: IP={self.external_ip}, "
+                        f"Updating chain with new values: IP={external_ip}, "
                         f"Port={self.port}"
                     )
 
@@ -120,7 +122,7 @@ class AgentMiner:
                             f"  substrate: {self.substrate}\n"
                             f"  keypair: {self.keypair}\n"
                             f"  netuid: {self.netuid}\n"
-                            f"  external_ip: {self.external_ip}\n"
+                            f"  external_ip: {external_ip}\n"
                             f"  external_port: {self.port}\n"
                             f"  coldkey_ss58_address: {coldkey_keypair_pub.ss58_address}"
                         )
@@ -128,7 +130,7 @@ class AgentMiner:
                             substrate=self.substrate,
                             keypair=self.keypair,
                             netuid=self.netuid,
-                            external_ip=self.external_ip,
+                            external_ip=external_ip,
                             external_port=self.port,
                             coldkey_ss58_address=coldkey_keypair_pub.ss58_address,
                         )
@@ -138,7 +140,6 @@ class AgentMiner:
                         logger.error(
                             f"Failed to post IP/Port to chain: {str(e)}", exc_info=True
                         )
-                        raise Exception(f"Failed to post IP/Port to chain {e}") from e
                 else:
                     logger.info(
                         f"IP/Port already up to date on chain: IP={node.ip}, "
@@ -150,11 +151,9 @@ class AgentMiner:
                     f"Please ensure it is registered."
                 )
                 logger.error(err_msg)
-                raise Exception(err_msg)
 
         except Exception as e:
             logger.error(f"Error in post_ip_to_chain: {str(e)}", exc_info=True)
-            raise
 
     def node(self) -> Optional[Node]:
         try:

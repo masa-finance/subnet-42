@@ -1,0 +1,36 @@
+FROM python:3.9-slim
+
+# Update package repositories and install Chromium dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    ca-certificates \
+    chromium \
+    chromium-driver \
+    fonts-liberation \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up working directory
+WORKDIR /app
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    requests==2.31.0 \
+    python-dotenv==1.0.0 \
+    selenium==4.14.0 \
+    webdriver-manager==4.0.1 \
+    asyncio
+
+# Create cookies directory
+RUN mkdir -p /app/cookies
+
+# Copy the script 
+COPY scripts/cookie_grabber.py /app/cookie_grabber.py
+
+# Set default OUTPUT_DIR
+ENV OUTPUT_DIR=/app/cookies
+
+# Set the Python script as the entrypoint
+ENTRYPOINT ["python", "/app/cookie_grabber.py"]

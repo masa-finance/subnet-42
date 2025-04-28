@@ -75,6 +75,13 @@ class MinerAPI:
             tags=["scoring"],
         )
 
+        self.app.add_api_route(
+            "/custom-message",
+            self.custom_message_handler,
+            methods=["POST"],
+            tags=["monitor"],
+        )
+
     async def score_report_handler(self, request: Request):
         try:
             payload = await request.json()
@@ -114,6 +121,26 @@ class MinerAPI:
             return {"status": "success"}
         except Exception as e:
             logger.error(f"\n\033[31mError processing score report: {str(e)}\033[0m")
+            return {"status": "error", "message": str(e)}
+
+    async def custom_message_handler(self, request: Request):
+        try:
+            payload = await request.json()
+            message = payload.get("message", "No message provided")
+            sender = payload.get("sender", "Unknown")
+
+            logger.info(
+                f"\n\033[36m"
+                f"====================================\n"
+                f"       CUSTOM MESSAGE RECEIVED      \n"
+                f"====================================\033[0m\n\n"
+                f"  From: {sender}\n"
+                f"  Message: {message}\n"
+            )
+
+            return {"status": "success", "received": True}
+        except Exception as e:
+            logger.error(f"\n\033[31mError processing custom message: {str(e)}\033[0m")
             return {"status": "error", "message": str(e)}
 
     async def healthcheck(self, request: Request):
