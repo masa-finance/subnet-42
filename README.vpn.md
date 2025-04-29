@@ -83,7 +83,7 @@ TorGuard is specifically recommended because they offer residential IP addresses
 
    - Log in to your Twitter accounts
    - Generate authentication cookies
-   - Save them to the `cookies` directory in your project
+   - Save them to the `cookies/` directory in your project
 
 3. **Verify Cookie Generation**:
 
@@ -114,17 +114,24 @@ This command will:
 
 ## 🧪 Testing Your Setup
 
-### Verify Residential IP
+### Verify Worker-VPN Routing
 
-```bash
-# Check your current VPN IP
-docker exec vpn curl -s https://ifconfig.me
+To make sure your worker-vpn container is properly routing through the VPN:
 
-# Verify it's classified as residential
-docker exec vpn curl -s "https://ipinfo.io/$(curl -s https://ifconfig.me)/json" | grep "type"
-```
+1. **Install curl in the worker-vpn container**:
 
-If it shows "type": "residential", your setup is working correctly!
+   ```bash
+   docker exec -it worker-vpn apt-get update && docker exec -it worker-vpn apt-get install -y curl
+   ```
+
+2. **Check the IP address of the worker-vpn container**:
+
+   ```bash
+   # Get the worker-vpn IP
+   docker exec worker-vpn curl -s https://ifconfig.me
+   ```
+
+   Verify that this shows a different IP than your host machine, confirming traffic is routing through the VPN.
 
 ### Why Residential IPs Matter
 
