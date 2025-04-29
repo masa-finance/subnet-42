@@ -22,6 +22,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
+        logging.FileHandler(f"{OUTPUT_DIR}/cookie_grabber.log"),
         logging.StreamHandler(),
     ],
 )
@@ -29,6 +30,20 @@ logger = logging.getLogger(__name__)
 
 # Twitter cookie names to extract
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
+
+
+def take_screenshot(driver, name):
+    """Take a screenshot and save it with a timestamp."""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{OUTPUT_DIR}/{timestamp}_{name}.png"
+    try:
+        driver.save_screenshot(filename)
+        logger.info(f"Screenshot saved: {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Failed to take screenshot {name}: {str(e)}")
+        return None
 
 
 def create_cookie_template(name, value):
@@ -97,6 +112,7 @@ def setup_driver():
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
         logger.info("Chromium driver setup complete")
+        take_screenshot(driver, "driver_initialized")
         return driver
     except Exception as e:
         logger.error(f"Error creating Chromium driver: {str(e)}")
@@ -110,6 +126,7 @@ def login_to_twitter(driver, username, password):
         logger.info("Navigating to Twitter login page")
         driver.get("https://twitter.com/i/flow/login")
         time.sleep(5)  # Give page time to fully load
+        take_screenshot(driver, "login_page_loaded")
 
         logger.info("Current URL: " + driver.current_url)
         logger.info("Page title: " + driver.title)
@@ -138,6 +155,7 @@ def login_to_twitter(driver, username, password):
 
         if not username_input:
             logger.error("Could not find username input field")
+            take_screenshot(driver, "username_input_not_found")
             return False
 
         # Enter username
@@ -145,6 +163,7 @@ def login_to_twitter(driver, username, password):
         username_input.clear()
         username_input.send_keys(username)
         time.sleep(1)
+        take_screenshot(driver, "username_entered")
 
         # Click next button - try different approaches
         logger.info("Attempting to click Next button")
@@ -172,18 +191,22 @@ def login_to_twitter(driver, username, password):
                     logger.info(f"Clicking button #{i+1}")
                     button.click()
                     clicked = True
+                    take_screenshot(driver, "next_button_clicked")
                     break
 
             if not clicked:
                 logger.info("No visible Next button found, trying Enter key")
                 # Try pressing Enter on username field as fallback
                 username_input.send_keys("\n")
+                take_screenshot(driver, "enter_key_used")
         except Exception as e:
             logger.error(f"Error clicking Next button: {str(e)}")
+            take_screenshot(driver, "next_button_error")
 
         # Wait for password field
         logger.info("Waiting for password field")
         time.sleep(3)
+        take_screenshot(driver, "after_username_submission")
 
         # Find password field
         password_input = None
@@ -205,6 +228,7 @@ def login_to_twitter(driver, username, password):
 
         if not password_input:
             logger.error("Could not find password input field")
+            take_screenshot(driver, "password_input_not_found")
             return False
 
         # Enter password
@@ -212,6 +236,7 @@ def login_to_twitter(driver, username, password):
         password_input.clear()
         password_input.send_keys(password)
         time.sleep(1)
+        take_screenshot(driver, "password_entered")
 
         # Click login button - try different approaches
         logger.info("Attempting to click Login button")
@@ -244,14 +269,17 @@ def login_to_twitter(driver, username, password):
                     logger.info(f"Clicking button #{i+1}")
                     button.click()
                     clicked = True
+                    take_screenshot(driver, "login_button_clicked")
                     break
 
             if not clicked:
                 logger.info("No visible Login button found, trying Enter key")
                 # Try pressing Enter on password field as fallback
                 password_input.send_keys("\n")
+                take_screenshot(driver, "enter_key_used_for_login")
         except Exception as e:
             logger.error(f"Error clicking Login button: {str(e)}")
+            take_screenshot(driver, "login_button_error")
 
         # Wait for login to complete
         logger.info("Waiting for login to complete")
@@ -263,21 +291,25 @@ def login_to_twitter(driver, username, password):
                 or len(d.find_elements(By.CSS_SELECTOR, 'a[aria-label="Profile"]')) > 0
             )
             logger.info("Successfully logged in")
+            take_screenshot(driver, "login_successful")
             return True
         except TimeoutException:
             logger.error("Timeout waiting for successful login")
+            take_screenshot(driver, "login_timeout")
 
             # Check if we need to handle verification
             if "verify" in driver.current_url or "challenge" in driver.current_url:
                 logger.warning(
                     "Verification or challenge detected that requires manual action"
                 )
+                take_screenshot(driver, "verification_challenge")
 
             logger.info(f"Current URL after timeout: {driver.current_url}")
             return False
 
     except Exception as e:
         logger.error(f"Error during login process: {str(e)}")
+        take_screenshot(driver, "login_exception")
         return False
 
 
@@ -346,6 +378,7 @@ def process_account(username, password):
             logger.info("Navigating to Twitter home to ensure all cookies are set")
             driver.get("https://twitter.com/home")
             time.sleep(3)  # Wait for cookies to be fully set
+            take_screenshot(driver, "twitter_home")
 
             cookie_values = extract_cookies(driver)
             cookies_json = generate_cookies_json(cookie_values)
@@ -359,6 +392,7 @@ def process_account(username, password):
             logger.error(f"Failed to login for {username}")
     except Exception as e:
         logger.error(f"Unexpected error processing account {username}: {str(e)}")
+        take_screenshot(driver, f"unexpected_error_{username}")
     finally:
         logger.info("Closing Chromium driver")
         driver.quit()

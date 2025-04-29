@@ -81,9 +81,7 @@ services:
       - ./cookies:/home/masa
     depends_on:
       vpn:
-        condition: service_started
-      cookie-generator:
-        condition: service_completed_successfully
+        condition: service_healthy
     logging:
       driver: json-file
       options:
@@ -91,7 +89,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["cookies", "miner-vpn", "vpn"]
+    profiles: ["miner-vpn"]
     build:
       context: .
       dockerfile: Dockerfile.vpn
@@ -105,23 +103,21 @@ services:
     ports:
       - "${VPN_PORT:-3128}:3128"
     volumes:
-      - ./config.ovpn:/etc/openvpn/config/config.ovpn
-      - ./auth.txt:/etc/openvpn/config/auth.txt
+      - ./vpn/config.ovpn:/etc/openvpn/config/config.ovpn
+      - ./vpn/auth.txt:/etc/openvpn/config/auth.txt
     env_file: .env
     healthcheck:
-      test: ["CMD", "curl", "-s", "http://localhost:${VPN_PORT:-3128}", "||", "exit", "1"]
-      interval: 10s
+      test: ["CMD", "bash", "-c", "[ \"$(cat /tmp/vpn_ready)\" = \"1\" ]"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 30s
 
-  cookie-generator:
-    profiles: ["cookies", "miner-vpn"]
+
+  cookies:
+    profiles: ["cookies"]
     image: cookie-generator:latest
     pull_policy: never
-    depends_on:
-      vpn:
-        condition: service_started
     build:
       context: .
       dockerfile: Dockerfile.cookies
@@ -130,9 +126,16 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
-      - http_proxy=http://vpn:${VPN_PORT:-3128}
-      - https_proxy=http://vpn:${VPN_PORT:-3128}
+      # - http_proxy=http://vpn:${VPN_PORT:-3128}
+      # - https_proxy=http://vpn:${VPN_PORT:-3128}
     restart: "no"
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-s", "https://api.twitter.com/", "||", "exit", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: json-file
       options:
