@@ -82,6 +82,8 @@ services:
     depends_on:
       vpn:
         condition: service_started
+      cookie-generator:
+        condition: service_completed_successfully
     logging:
       driver: json-file
       options:
@@ -89,7 +91,7 @@ services:
         max-file: "3"
 
   vpn:
-    profiles: ["miner-vpn"]
+    profiles: ["cookies", "miner-vpn"]
     image: ubuntu:22.04
     restart: unless-stopped
     cap_add:
@@ -126,9 +128,12 @@ services:
       start_period: 30s
 
   cookie-generator:
-    profiles: ["cookies"]
+    profiles: ["cookies", "miner-vpn"]
     image: cookie-generator:latest
     pull_policy: never
+    depends_on:
+      vpn:
+        condition: service_started
     build:
       context: .
       dockerfile: Dockerfile.cookies
