@@ -347,9 +347,9 @@ def generate_cookies_json(cookie_values):
     logger.info("Generating cookies JSON")
     cookies = []
     for name in COOKIE_NAMES:
-        value = cookie_values.get(name, "<YOUR_VALUE_HERE>")
-        if value == "<YOUR_VALUE_HERE>":
-            logger.warning(f"Using placeholder for missing cookie: {name}")
+        value = cookie_values.get(name, "")
+        if value == "":
+            logger.warning(f"Using empty string for missing cookie: {name}")
         cookies.append(create_cookie_template(name, value))
     return cookies
 
