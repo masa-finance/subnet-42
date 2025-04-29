@@ -1,0 +1,20 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && \
+    apt-get install -y openvpn curl iptables tinyproxy
+
+COPY config.ovpn /etc/openvpn/config/config.ovpn
+COPY auth.txt /etc/openvpn/config/auth.txt
+
+# Configure system
+RUN echo "net.ipv4.ip_forward=1" > /etc/sysctl.conf && \
+    echo "Allow 0.0.0.0/0" >> /etc/tinyproxy/tinyproxy.conf
+
+# Setup entrypoint script
+COPY entrypoint-vpn.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
+    CMD curl -s http://localhost:${VPN_PORT:-3128} || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"] 
