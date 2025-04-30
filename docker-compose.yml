@@ -33,7 +33,7 @@ services:
   
   worker:
     profiles: ["miner", "validator-tee"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:main
     pull_policy: always
     restart: unless-stopped
     deploy:
@@ -58,7 +58,7 @@ services:
 
   worker-vpn:
     profiles: ["miner-vpn"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:main
     restart: unless-stopped
     deploy:
       resources:
