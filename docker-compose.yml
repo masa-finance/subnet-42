@@ -101,7 +101,7 @@ services:
     devices:
       - /dev/net/tun
     ports:
-      - "${VPN_PORT:-3128}:3128"
+      - "${VPN_PORT:-3128}:${VPN_PORT:-3128}"
     volumes:
       - ./vpn/config.ovpn:/etc/openvpn/config/config.ovpn
       - ./vpn/auth.txt:/etc/openvpn/config/auth.txt
@@ -126,16 +126,8 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
-      # - http_proxy=http://vpn:${VPN_PORT:-3128}
-      # - https_proxy=http://vpn:${VPN_PORT:-3128}
     restart: "no"
     env_file: .env
-    healthcheck:
-      test: ["CMD", "curl", "-f", "-s", "https://api.twitter.com/", "||", "exit", "1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
     logging:
       driver: json-file
       options:
