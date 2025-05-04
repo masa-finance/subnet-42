@@ -58,7 +58,8 @@ services:
 
   worker-vpn:
     profiles: ["miner-vpn"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:main
+    pull_policy: always
     restart: unless-stopped
     deploy:
       resources:
