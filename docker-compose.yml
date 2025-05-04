@@ -103,8 +103,7 @@ services:
     ports:
       - "${VPN_PORT:-3128}:${VPN_PORT:-3128}"
     volumes:
-      - ./vpn/config.ovpn:/etc/openvpn/config/config.ovpn
-      - ./vpn/auth.txt:/etc/openvpn/config/auth.txt
+      - ./vpn:/etc/openvpn/config
     env_file: .env
     healthcheck:
       test: ["CMD", "bash", "-c", "[ \"$(cat /tmp/vpn_ready)\" = \"1\" ]"]
