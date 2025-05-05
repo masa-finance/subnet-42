@@ -79,7 +79,7 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - ./cookies:/home/masa
+      - cookies-volume:/home/masa/cookies
     depends_on:
       vpn:
         condition: service_healthy
@@ -114,16 +114,15 @@ services:
       start_period: 30s
 
 
-  cookies:
-    profiles: ["cookies"]
+  cookies-generator:
     image: cookie-generator:latest
     pull_policy: never
     build:
       context: .
-      dockerfile: Dockerfile.cookies
+      dockerfile: Dockerfile.cookies.generator
     volumes:
       - ./.env:/app/.env
-      - ./cookies:/app/cookies
+      - cookies-volume:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
     restart: "no"
@@ -133,3 +132,33 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  cookies-updater:
+    image: cookies-updater:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile.cookies.updater
+    volumes:
+      - ./.env:/app/.env
+      - ./cookies:/app/cookies
+      - ./key.pem:/app/key.pem:ro
+    environment:
+      - REMOTE_HOST=${COOKIES_REMOTE_HOST:-localhost}
+      - REMOTE_USER=${COOKIES_REMOTE_USER:-azureuser}
+      - REMOTE_DIR=${COOKIES_REMOTE_DIR:-/tmp/cookies-upload}
+      - PYTHONUNBUFFERED=1
+    restart: "no"
+    env_file: .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      cookies-generator:
+        condition: service_completed_successfully
+
+volumes:
+  cookies-volume:
+    name: cookies-volume
