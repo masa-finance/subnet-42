@@ -15,19 +15,19 @@ scp -i /root/.ssh/id_rsa -r /app/cookies/* $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR
 
 # Copy cookies from temporary directory to the Docker volume
 ssh -i /root/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "
-  # Create a temporary container to access the volume
-  # Mount the volume at /data and ensure cookies go directly to /home/masa
-  docker run --rm -v cookies-volume:/data -v $REMOTE_DIR:/source alpine sh -c '
-    # Create the directory structure to match worker-vpn's expected path
-    mkdir -p /data/home/masa
-    # Copy the files to the correct location - directly under /home/masa
-    cp -r /source/* /data/home/masa/
-    # Set the correct permissions
-    chown -R 1000:1000 /data
-    # List the files to confirm they were copied
-    echo "Files in the volume:"
-    ls -la /data/home/masa/
-  '
+  # List files to make sure they were transferred
+  echo 'Files in the temporary directory:'
+  ls -la $REMOTE_DIR/
+  
+  # Create a temporary container to access the volume and copy files
+  docker run --rm -v cookies-volume:/volume -v $REMOTE_DIR:/source --user root alpine sh -c \"
+    echo 'Copying files to volume...'
+    # Copy files to the root of the volume - they'll be accessed at /home/masa in worker-vpn
+    cp -r /source/* /volume/
+    # List files to confirm copy
+    echo 'Files in the volume:'
+    ls -la /volume/
+  \"
   
   # Clean up temporary directory
   rm -rf $REMOTE_DIR
