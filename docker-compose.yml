@@ -164,3 +164,4 @@ services:
 volumes:
   cookies-volume:
     name: cookies-volume
+    external: true
