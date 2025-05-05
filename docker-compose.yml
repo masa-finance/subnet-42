@@ -33,7 +33,7 @@ services:
   
   worker:
     profiles: ["miner", "validator-tee"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:sha-0eb185e-20250505022534@sha256:2d1add1374c5452d43799bea0e2290f4420e9842c84e25e73d6e97737f859950
     pull_policy: always
     restart: unless-stopped
     deploy:
@@ -58,7 +58,7 @@ services:
 
   worker-vpn:
     profiles: ["miner-vpn"]
-    image: masaengineering/tee-worker:latest
+    image: masaengineering/tee-worker:sha-0eb185e-20250505022534@sha256:2d1add1374c5452d43799bea0e2290f4420e9842c84e25e73d6e97737f859950
     pull_policy: always
     restart: unless-stopped
     deploy:
