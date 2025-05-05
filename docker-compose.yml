@@ -74,6 +74,7 @@ services:
     environment:
       - http_proxy=http://vpn:${VPN_PORT:-3128}
       - https_proxy=http://vpn:${VPN_PORT:-3128}
+      - TWITTER_SKIP_LOGIN_VERIFICATION=true
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
