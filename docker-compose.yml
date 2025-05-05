@@ -115,6 +115,7 @@ services:
 
 
   cookies-generator:
+    profiles: ["cookies"]
     image: cookie-generator:latest
     pull_policy: never
     build:
@@ -122,7 +123,7 @@ services:
       dockerfile: Dockerfile.cookies.generator
     volumes:
       - ./.env:/app/.env
-      - cookies-volume:/app/cookies
+      - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
     restart: "no"
@@ -133,7 +134,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  cookies:
+  cookies-updater:
+    profiles: ["cookies"]
     image: cookies-updater:latest
     pull_policy: never
     build:
