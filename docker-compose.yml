@@ -58,7 +58,7 @@ services:
 
   worker-vpn:
     profiles: ["miner-vpn"]
-    image: masaengineering/tee-worker:main
+    image: masaengineering/tee-worker:latest
     pull_policy: always
     restart: unless-stopped
     deploy:
@@ -74,6 +74,8 @@ services:
     environment:
       - http_proxy=http://vpn:${VPN_PORT:-3128}
       - https_proxy=http://vpn:${VPN_PORT:-3128}
+      - TWITTER_SKIP_LOGIN_VERIFICATION=true
+    env_file: .env
     devices:
       - /dev/sgx_enclave
       - /dev/sgx_provision
