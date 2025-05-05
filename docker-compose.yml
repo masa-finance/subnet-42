@@ -133,7 +133,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  cookies-updater:
+  cookies:
     image: cookies-updater:latest
     pull_policy: never
     build:
