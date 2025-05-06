@@ -72,6 +72,42 @@ class NodeDataScorer:
 
                     logger.info(f"Node {hotkey[:10]}... worker ID: {worker_id}")
 
+                    # Aggregate stats across all worker IDs
+                    stats_dict = telemetry_result.get("stats", {})
+
+                    # Initialize aggregated stats
+                    twitter_auth_errors = 0
+                    twitter_errors = 0
+                    twitter_ratelimit_errors = 0
+                    twitter_returned_other = 0
+                    twitter_returned_profiles = 0
+                    twitter_returned_tweets = 0
+                    twitter_scrapes = 0
+                    web_errors = 0
+                    web_success = 0
+
+                    # Aggregate stats from all worker IDs
+                    for worker_stats in stats_dict.values():
+                        twitter_auth_errors += worker_stats.get(
+                            "twitter_auth_errors", 0
+                        )
+                        twitter_errors += worker_stats.get("twitter_errors", 0)
+                        twitter_ratelimit_errors += worker_stats.get(
+                            "twitter_ratelimit_errors", 0
+                        )
+                        twitter_returned_other += worker_stats.get(
+                            "twitter_returned_other", 0
+                        )
+                        twitter_returned_profiles += worker_stats.get(
+                            "twitter_returned_profiles", 0
+                        )
+                        twitter_returned_tweets += worker_stats.get(
+                            "twitter_returned_tweets", 0
+                        )
+                        twitter_scrapes += worker_stats.get("twitter_scrapes", 0)
+                        web_errors += worker_stats.get("web_errors", 0)
+                        web_success += worker_stats.get("web_success", 0)
+
                     telemetry_data = NodeData(
                         hotkey=hotkey,
                         uid=uid,
@@ -82,33 +118,15 @@ class NodeDataScorer:
                             "last_operation_time", 0
                         ),
                         current_time=telemetry_result.get("current_time", 0),
-                        twitter_auth_errors=telemetry_result.get("stats", {}).get(
-                            "twitter_auth_errors", 0
-                        ),
-                        twitter_errors=telemetry_result.get("stats", {}).get(
-                            "twitter_errors", 0
-                        ),
-                        twitter_ratelimit_errors=telemetry_result.get("stats", {}).get(
-                            "twitter_ratelimit_errors", 0
-                        ),
-                        twitter_returned_other=telemetry_result.get("stats", {}).get(
-                            "twitter_returned_other", 0
-                        ),
-                        twitter_returned_profiles=telemetry_result.get("stats", {}).get(
-                            "twitter_returned_profiles", 0
-                        ),
-                        twitter_returned_tweets=telemetry_result.get("stats", {}).get(
-                            "twitter_returned_tweets", 0
-                        ),
-                        twitter_scrapes=telemetry_result.get("stats", {}).get(
-                            "twitter_scrapes", 0
-                        ),
-                        web_errors=telemetry_result.get("stats", {}).get(
-                            "web_errors", 0
-                        ),
-                        web_success=telemetry_result.get("stats", {}).get(
-                            "web_success", 0
-                        ),
+                        twitter_auth_errors=twitter_auth_errors,
+                        twitter_errors=twitter_errors,
+                        twitter_ratelimit_errors=twitter_ratelimit_errors,
+                        twitter_returned_other=twitter_returned_other,
+                        twitter_returned_profiles=twitter_returned_profiles,
+                        twitter_returned_tweets=twitter_returned_tweets,
+                        twitter_scrapes=twitter_scrapes,
+                        web_errors=web_errors,
+                        web_success=web_success,
                     )
                     logger.info(f"Storing telemetry for node {hotkey[:10]}...")
                     logger.info(
@@ -141,7 +159,7 @@ class NodeDataScorer:
                     exc_info=True,
                 )
 
-        logger.info(f"Telemetry collection summary:")
+        logger.info("Telemetry collection summary:")
         logger.info(f"  - Total nodes processed: {len(nodes)}")
         logger.info(f"  - Successful telemetry collections: {successful_nodes}")
         logger.info(f"  - Failed telemetry collections: {failed_nodes}")
