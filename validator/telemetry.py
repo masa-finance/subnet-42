@@ -21,7 +21,7 @@ class TEETelemetryClient:
     async def generate_telemetry_job(self):
         async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
-                f"{self.tee_worker_address}/job/generate",
+                f"{self.result_tee_worker_address}/job/generate",
                 headers={"Content-Type": "application/json"},
                 json={"type": "telemetry"},
             )

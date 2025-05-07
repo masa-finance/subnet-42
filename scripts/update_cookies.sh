@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Script to transfer locally generated cookies to worker volumes on the remote server
-
 # Environment variables are passed from docker-compose
 # REMOTE_HOST, REMOTE_USER, REMOTE_DIR should be set
 
