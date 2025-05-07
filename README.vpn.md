@@ -1,139 +1,138 @@
 # 🚀 Subnet-42 Miner with VPN Setup Guide
 
-This guide will help you set up your Subnet-42 miner with a VPN for residential IP routing. This configuration allows your miner to be publicly accessible while your worker routes outbound traffic through a VPN to appear as if it's coming from a residential IP.
+This guide helps you set up your Subnet-42 miner with a VPN for residential IP routing. This allows your miner to be publicly accessible while your worker routes outbound traffic through a residential VPN IP.
 
 ## 📋 Prerequisites
 
 - Docker installed
-- ExpressVPN subscription (or another OpenVPN-compatible VPN)
-- Twitter account credentials for cookie generation
+- **TorGuard VPN subscription** (strongly recommended for residential IPs)
+- Twitter account credentials
 
 ## 🔧 Setup Steps
 
 ### 1️⃣ Prepare Your VPN Configuration
 
-**Create auth.txt file:**
+#### TorGuard Setup for Residential IPs
 
-```
-your_expressvpn_username
-your_expressvpn_password
-```
+TorGuard is specifically recommended because they offer residential IP addresses, which are crucial for this setup.
 
-**Get your OpenVPN configuration:**
+1. **Subscribe to TorGuard with Residential IP add-on**:
 
-1. Log into your ExpressVPN account
-2. Go to "Set Up ExpressVPN" > "Manual Configuration" > "OpenVPN"
-3. Download the .ovpn file for your preferred location
-4. Rename it to `config.ovpn` and place it in your project root
-5. Edit the file to remove any `auth-user-pass` lines
+   - Sign up for TorGuard VPN
+   - Purchase the "Residential IP" add-on
+   - Request residential IPs in your desired location
+
+2. Create the required directories:
+
+   ```bash
+   mkdir -p vpn cookies
+   ```
+
+3. **Create auth.txt file**:
+
+   Create a file with your TorGuard credentials:
+
+   ```
+   your_torguard_username
+   your_torguard_password
+   ```
+
+   Save this to `vpn/auth.txt`
+
+4. **Configure OpenVPN**:
+
+   - Log into your TorGuard account
+   - Download the OpenVPN configuration files
+   - Create a `config.ovpn` file in `vpn/` with your residential servers:
+
+   ```
+   client
+   dev tun
+   proto udp
+   # Multiple residential servers for redundancy
+   remote <ip-here> <port>
+   remote <ip-here> <port>
+   remote-random
+   remote-cert-tls server
+   auth SHA256
+   key-direction 1
+   # Add your TorGuard certificates and keys below
+   ... (rest of configuration) ...
+   ```
 
 ### 2️⃣ Generate Twitter Cookies
 
-First, add your Twitter account credentials to your .env file:
+#### Option 1: Use the Cookie Generator Service
 
-```
-# Add your Twitter accounts in this format
-TWITTER_ACCOUNTS="username1:password1,username2:password2"
-```
+1. **Configure Twitter Credentials**:
 
-Then, run the cookie generator service by itself:
+   Add your Twitter account credentials to your .env file:
 
-```bash
-# Create the cookies directory first if it doesn't exist
-mkdir -p cookies
+   ```
+   # Add your Twitter accounts in this format
+   TWITTER_ACCOUNTS="username1:password1,username2:password2"
+   ```
 
-# Run the cookie generator
-docker compose --profile cookies up
-```
+2. **Run the Cookie Generator Service**:
 
-This will:
+   ```bash
+   docker compose up cookies
+   ```
 
-- Build and run the cookie-generator container
-- Log into your Twitter accounts using Chromium browser in headless mode
-- Extract the necessary authentication cookies
-- Save them to the `cookies/` directory along with screenshots of each step and logs
-- Exit once cookies are generated
+   This service will:
 
-Wait until this process completes before proceeding to the next step.
+   - Log in to your Twitter accounts
+   - Generate authentication cookies
+   - Save them to the `cookies/` directory in your project
 
-### 3️⃣ Launch the Miner with VPN
+3. **Verify Cookie Generation**:
 
-After generating the cookies, start the miner and VPN services:
+   ```bash
+   ls -la ./cookies/
+   ```
+
+   You should see files named `<username>_twitter_cookies.json` for each account.
+
+### 3️⃣ Launch Everything with One Command
+
+Once you have:
+
+- VPN files in `vpn/` (auth.txt and config.ovpn)
+- Cookie files in the `cookies/` directory
+
+You can start the full system:
 
 ```bash
 docker compose --profile miner-vpn up -d
 ```
 
-This will start three containers:
+This command will:
 
-- `neuron`: Your subnet-42 miner (accessible on port 8091)
-- `worker-vpn`: Your TEE worker with VPN routing (accessible on port 8080)
-- `vpn`: OpenVPN client with TinyProxy (routes worker traffic through VPN)
-
-The worker-vpn service will use the cookie files previously generated.
+1. Start the VPN service using your TorGuard residential IPs
+2. Launch the TEE worker using the VPN
+3. Start your subnet-42 miner
 
 ## 🧪 Testing Your Setup
 
-### Install Testing Tools
+### Verify Worker-VPN Routing
 
-```bash
-# Install curl in the worker container
-docker exec worker-vpn apt-get update && docker exec worker-vpn apt-get install -y curl iputils-ping
-```
+To make sure your worker-vpn container is properly routing through the VPN:
 
-### Test VPN Connectivity
+1. **Install curl in the worker-vpn container**:
 
-```bash
-# Check if worker can reach the VPN container
-docker exec worker-vpn ping -c 2 vpn
+   ```bash
+   docker exec -it worker-vpn apt-get update && docker exec -it worker-vpn apt-get install -y curl
+   ```
 
-# Test if the VPN proxy is working
-docker exec vpn curl -x http://localhost:3128 https://ifconfig.me
+2. **Check the IP address of the worker-vpn container**:
 
-# Test if worker can access the internet through the proxy
-docker exec worker-vpn curl -v -x http://vpn:3128 https://ifconfig.me
-```
+   ```bash
+   # Get the worker-vpn IP
+   docker exec worker-vpn curl -s https://ifconfig.me
+   ```
 
-If everything is working, these commands should return the ExpressVPN IP address, not your server's IP.
+   Verify that this shows a different IP than your host machine, confirming traffic is routing through the VPN.
 
-### Test Service Accessibility
+### Why Residential IPs Matter
 
-- Miner: `curl http://your-server-ip:8091`
-- Worker: `curl http://your-server-ip:8080`
-
-Both should be accessible from the public internet.
-
-## 🔍 Troubleshooting
-
-### Cookie Generation Issues
-
-If you encounter issues with automatic cookie generation:
-
-```bash
-# View cookie generator logs
-docker compose --profile cookies logs
-
-# Check if cookies were generated
-ls -la ./cookies/
-
-# Restart cookie generation if needed
-docker compose --profile cookies up --force-recreate
-```
-
-### "LoginAcid" Error
-
-If you see `login failed: auth error: LoginAcid`, try:
-
-- Using a different ExpressVPN server location
-- Checking your Twitter account credentials in .env
-- Testing with different VPN server locations to find one that isn't flagged
-
-### VPN Connection Issues
-
-Check the VPN container logs:
-
-```bash
-docker logs vpn
-```
-
-Look for successful connection messages or error details.
+Regular datacenter VPN IPs are often flagged and blocked by services. Residential IPs are much less likely to be detected, making them essential for reliable operation.

@@ -26,3 +26,5 @@ cookies/
 
 .env*
 !.env.example
+
+key.pem
