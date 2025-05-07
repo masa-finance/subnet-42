@@ -19,14 +19,14 @@ ssh -i /root/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "
   echo 'Files in the temporary directory:'
   ls -la $REMOTE_DIR/
   
-  # Find all worker volumes using a pattern match
-  echo 'Finding all worker volumes...'
-  worker_volumes=\$(docker volume ls --format '{{.Name}}' | grep -E 'worker-[0-9]+')
+  # Find all cookies-volume volumes using a pattern match (both with and without project prefix)
+  echo 'Finding all cookies volumes...'
+  worker_volumes=\$(docker volume ls --format '{{.Name}}' | grep -E '(miner-[0-9]+_)?cookies-volume')
   
   if [ -z \"\$worker_volumes\" ]; then
-    echo 'No worker volumes found! Are the workers running?'
+    echo 'No cookies volumes found! Are the miners running?'
   else
-    # Update each worker volume found
+    # Update each volume found
     echo \"\$worker_volumes\" | while read volume; do
       echo \"Updating volume: \$volume\"
       docker run --rm -v \"\$volume\":/volume -v $REMOTE_DIR:/source --user root alpine sh -c \"
@@ -43,4 +43,4 @@ ssh -i /root/.ssh/id_rsa $REMOTE_USER@$REMOTE_HOST "
   rm -rf $REMOTE_DIR
 "
 
-echo "Cookies successfully updated in all worker volumes!" 
+echo "Cookies successfully updated in all miner volumes!" 

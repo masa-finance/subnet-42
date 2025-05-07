@@ -50,7 +50,7 @@ services:
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
-      - worker-${WORKER_INDEX:-1}:/home/masa
+      - cookies-volume:/home/masa
     logging:
       driver: json-file
       options:
@@ -81,7 +81,7 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - worker-${WORKER_INDEX:-1}:/home/masa
+      - cookies-volume:/home/masa
     depends_on:
       vpn:
         condition: service_healthy
@@ -163,3 +163,6 @@ services:
     depends_on:
       cookies-generator:
         condition: service_completed_successfully
+
+volumes:
+  cookies-volume:
