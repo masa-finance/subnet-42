@@ -50,12 +50,16 @@ services:
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
+      - type: volume
+        source: worker-${WORKER_INDEX:-1}
+        target: /home/masa
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
 
+  # Base worker-vpn service that others will extend
   worker-vpn:
     profiles: ["miner-vpn"]
     image: masaengineering/tee-worker:latest
@@ -78,8 +82,10 @@ services:
       - /dev/sgx_enclave
       - /dev/sgx_provision
     volumes:
-      - cookies-volume:/home/masa
       - ./.env:/home/masa/.env
+      - type: volume
+        source: worker-${WORKER_INDEX:-1}
+        target: /home/masa
     depends_on:
       vpn:
         condition: service_healthy
@@ -145,6 +151,7 @@ services:
       - ./.env:/app/.env
       - ./cookies:/app/cookies
       - ./key.pem:/app/key.pem:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REMOTE_HOST=${COOKIES_REMOTE_HOST:-localhost}
       - REMOTE_USER=${COOKIES_REMOTE_USER:-azureuser}
@@ -160,8 +167,3 @@ services:
     depends_on:
       cookies-generator:
         condition: service_completed_successfully
-
-volumes:
-  cookies-volume:
-    name: cookies-volume
-    external: true
