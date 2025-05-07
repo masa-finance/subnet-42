@@ -50,9 +50,7 @@ services:
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
-      - type: volume
-        source: worker-${WORKER_INDEX:-1}
-        target: /home/masa
+      - worker-${WORKER_INDEX:-1}:/home/masa
     logging:
       driver: json-file
       options:
@@ -83,9 +81,7 @@ services:
       - /dev/sgx_provision
     volumes:
       - ./.env:/home/masa/.env
-      - type: volume
-        source: worker-${WORKER_INDEX:-1}
-        target: /home/masa
+      - worker-${WORKER_INDEX:-1}:/home/masa
     depends_on:
       vpn:
         condition: service_healthy
