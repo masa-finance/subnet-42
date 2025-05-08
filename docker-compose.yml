@@ -50,6 +50,7 @@ services:
     network_mode: host
     volumes:
       - ./.env:/home/masa/.env
+      - cookies-volume:/home/masa
     logging:
       driver: json-file
       options:
@@ -145,6 +146,7 @@ services:
       - ./.env:/app/.env
       - ./cookies:/app/cookies
       - ./key.pem:/app/key.pem:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REMOTE_HOST=${COOKIES_REMOTE_HOST:-localhost}
       - REMOTE_USER=${COOKIES_REMOTE_USER:-azureuser}
@@ -163,5 +165,3 @@ services:
 
 volumes:
   cookies-volume:
-    name: cookies-volume
-    external: true
