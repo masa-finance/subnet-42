@@ -28,8 +28,11 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
   
   worker:
     profiles: ["miner", "validator-tee"]
@@ -54,8 +57,11 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
 
   worker-vpn:
     profiles: ["miner-vpn"]
@@ -87,8 +93,11 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
 
   vpn:
     profiles: ["miner-vpn"]
@@ -117,6 +126,14 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
 
 
   cookies-generator:
@@ -138,8 +155,11 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
 
   cookies-updater:
     profiles: ["cookies"]
@@ -163,8 +183,11 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
     depends_on:
       cookies-generator:
         condition: service_completed_successfully
