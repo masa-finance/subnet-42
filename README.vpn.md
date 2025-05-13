@@ -62,7 +62,9 @@ TorGuard is specifically recommended because they offer residential IP addresses
 
 ### 2️⃣ Generate Twitter Cookies
 
-#### Option 1: Use the Cookie Generator Service
+You have two options for generating Twitter cookies:
+
+#### Option 1: Use the Docker Cookie Generator Service (Automated)
 
 1. **Configure Twitter Credentials**:
 
@@ -92,6 +94,47 @@ TorGuard is specifically recommended because they offer residential IP addresses
    ```
 
    You should see files named `<username>_twitter_cookies.json` for each account.
+
+#### Option 2: Run the Manual CAPTCHA Intervention Script (Recommended)
+
+If you're encountering CAPTCHA challenges or authentication issues with the automated method, use this approach:
+
+1. **Install Required Dependencies**:
+
+   ```bash
+   pip install selenium==4.14.0 undetected-chromedriver==3.5.3 selenium-stealth==1.0.6 python-dotenv==1.0.0
+   ```
+
+2. **Set Environment Variables**:
+
+   ```bash
+   export TWITTER_ACCOUNTS="username1:password1,username2:password2"
+   ```
+
+   Or create a `.env` file in the scripts directory with this variable.
+
+3. **Run the Cookie Grabber Script**:
+
+   ```bash
+   cd scripts
+   python cookie_grabber.py
+   ```
+
+4. **Manual CAPTCHA Solving**:
+
+   - The script opens a visible browser window
+   - When a CAPTCHA/authentication challenge appears, you'll see:
+     ```
+     ================================================================================
+     MANUAL INTERVENTION REQUIRED for account: username
+     Please solve the CAPTCHA or authentication challenge in the browser window
+     ================================================================================
+     ```
+   - Manually solve the challenge in the browser window
+   - The script will detect when you've solved it and continue automatically
+   - Cookies will be saved to the `../cookies` directory
+
+This manual approach is more reliable for accounts that frequently encounter verification challenges.
 
 ### 3️⃣ Launch Everything with One Command
 
@@ -136,3 +179,11 @@ To make sure your worker-vpn container is properly routing through the VPN:
 ### Why Residential IPs Matter
 
 Regular datacenter VPN IPs are often flagged and blocked by services. Residential IPs are much less likely to be detected, making them essential for reliable operation.
+
+## Troubleshooting
+
+### Cookie Generator Issues
+
+- If the Docker cookie generator fails with `'ChromeOptions' object has no attribute 'headless'` error, use the manual script approach (Option 2)
+- If manual cookie generation fails, try increasing the `MAX_WAITING_TIME` constant in the script
+- Ensure Chrome is properly installed on your system when using the manual script

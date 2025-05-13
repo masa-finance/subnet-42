@@ -127,6 +127,8 @@ services:
       - ./cookies:/app/cookies
     environment:
       - PYTHONUNBUFFERED=1
+      - ENABLE_VNC=true
+      - RUNNING_IN_DOCKER=true
     restart: "no"
     env_file: .env
     logging:
