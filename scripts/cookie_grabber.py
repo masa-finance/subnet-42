@@ -45,7 +45,7 @@ TWITTER_DOMAINS = ["twitter.com", "x.com"]
 
 # Constants for manual intervention
 POLLING_INTERVAL = 5  # seconds between home page checks during manual intervention
-MAX_WAITING_TIME = 300  # maximum seconds to wait for manual intervention (5 minutes)
+MAX_WAITING_TIME = 600  # maximum seconds to wait for manual intervention (10 minutes)
 
 
 def take_screenshot(driver, name):
@@ -88,23 +88,48 @@ def create_cookie_template(name, value, domain="twitter.com"):
     }
 
 
-def setup_driver():
-    """Set up and return a visible (non-headless) Chromium browser driver instance."""
-    logger.info("Setting up visible Chromium driver...")
+def get_chrome_data_path():
+    """Get the default Chrome user data directory based on OS"""
+    import platform
 
-    # Create Chrome options manually instead of using uc.ChromeOptions()
-    # This helps avoid the headless attribute error in undetected-chromedriver
+    system = platform.system()
+    if system == "Darwin":  # macOS
+        return (
+            f"/Users/{os.environ.get('USER')}/Library/Application Support/Google/Chrome"
+        )
+    elif system == "Windows":
+        return f"C:/Users/{os.environ.get('USERNAME')}/AppData/Local/Google/Chrome/User Data"
+    elif system == "Linux":
+        return f"/home/{os.environ.get('USER')}/.config/google-chrome"
+    else:
+        return None
+
+
+def setup_driver():
+    """Set up and return a Chrome driver using a dedicated profile."""
+    logger.info("Setting up Chrome driver...")
+
     options = webdriver.ChromeOptions()
+
+    # Create a temporary profile directory to avoid conflicts with existing Chrome
+    import tempfile
+
+    temp_profile = os.path.join(
+        tempfile.gettempdir(), f"chrome_profile_{int(time.time())}"
+    )
+    os.makedirs(temp_profile, exist_ok=True)
+    logger.info(f"Using dedicated Chrome profile at: {temp_profile}")
+    options.add_argument(f"--user-data-dir={temp_profile}")
 
     # Common options
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-features=IsolateOrigins")
-    options.add_argument("--disable-site-isolation-trials")
-    options.add_argument("--disable-web-security")
     options.add_argument("--disable-blink-features=AutomationControlled")
+
+    # Add anti-cloudflare options
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--allow-running-insecure-content")
 
     # Add a random viewport size
     width = random.randint(1050, 1200)
@@ -113,28 +138,16 @@ def setup_driver():
 
     # Add more randomized user agents
     user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36 Edg/95.0.1020.44",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.2 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
     ]
     user_agent = random.choice(user_agents)
     options.add_argument(f"--user-agent={user_agent}")
 
-    # Get proxy settings from environment variables
-    http_proxy = os.environ.get("http_proxy")
-    if http_proxy and "http://" in http_proxy:
-        logger.info(f"Using proxy: {http_proxy}")
-        options.add_argument(f"--proxy-server={http_proxy}")
-
     try:
-        logger.info("Initializing visible Chrome driver...")
-
-        # Use Selenium's ChromeDriver directly with undetected_chromedriver modifications
-        # instead of uc.Chrome which has the headless attribute issue
+        logger.info("Initializing Chrome driver...")
         driver = webdriver.Chrome(options=options)
-
         logger.info("Successfully initialized Chrome driver")
 
         # Additional anti-detection measures
@@ -156,7 +169,16 @@ def setup_driver():
         return driver
     except Exception as e:
         logger.error(f"Error creating Chrome driver: {str(e)}")
-        raise
+        # Ultimate fallback with minimal options
+        try:
+            logger.info("Trying with minimal Chrome options...")
+            minimal_options = webdriver.ChromeOptions()
+            minimal_options.add_argument("--no-sandbox")
+            driver = webdriver.Chrome(options=minimal_options)
+            return driver
+        except Exception as e2:
+            logger.error(f"Final driver creation attempt failed: {str(e2)}")
+            raise
 
 
 def human_like_typing(element, text):
@@ -399,7 +421,10 @@ def handle_manual_intervention(driver, username):
     logger.info("=" * 80)
     logger.info(f"MANUAL INTERVENTION REQUIRED for account: {username}")
     logger.info(
-        "Please solve the CAPTCHA or authentication challenge in the browser window"
+        "Please solve the CAPTCHA or Cloudflare challenge in the browser window"
+    )
+    logger.info(
+        "If Cloudflare keeps resetting, try refreshing the page or waiting longer"
     )
     logger.info("=" * 80)
 
@@ -736,6 +761,7 @@ def main():
 
             driver = setup_driver()
 
+            # Process accounts
             for account_pair in account_pairs:
                 if ":" not in account_pair:
                     logger.error(
