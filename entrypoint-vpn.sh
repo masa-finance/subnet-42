@@ -15,9 +15,6 @@ sed -i 's/^#DisableViaHeader Yes/DisableViaHeader Yes/' /etc/tinyproxy/tinyproxy
 sed -i 's/^MaxClients 100/MaxClients 200/' /etc/tinyproxy/tinyproxy.conf
 sed -i 's/^Timeout 600/Timeout 1800/' /etc/tinyproxy/tinyproxy.conf
 
-# Randomize User-Agent
-echo "RandomizeUserAgent Yes" >> /etc/tinyproxy/tinyproxy.conf
-
 # Apply sysctl setting
 echo "Setting up IP forwarding..."
 sysctl -p
@@ -47,37 +44,33 @@ done
 touch /tmp/vpn_ready
 echo "0" > /tmp/vpn_ready
 
-# Start a background process to watch for the initialization message
-echo "Starting OpenVPN log monitor..."
-openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3 2>&1 | tee /var/log/openvpn.log | while read line; do
-    echo "$line"
-    if [[ "$line" == *"Initialization Sequence Completed"* ]]; then
-        echo "VPN CONNECTED SUCCESSFULLY!"
-        echo "1" > /tmp/vpn_ready
-    fi
-done &
+# Launch OpenVPN in foreground mode with minimal logging
+echo "Starting OpenVPN..."
+openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 0 --log /var/log/openvpn.log --management 127.0.0.1 7505 --daemon
 
-# Connection monitor
-echo "Setting up connection monitor..."
-(
-while true; do
-    sleep 60
-    if ! ping -c 1 1.1.1.1 > /dev/null 2>&1; then
-        echo "Connection seems down, restarting VPN..."
-        pkill -f "openvpn --config"
-        sleep 5
-        # Start OpenVPN again
-        openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3 2>&1 | tee /var/log/openvpn.log | while read line; do
-            echo "$line"
-            if [[ "$line" == *"Initialization Sequence Completed"* ]]; then
-                echo "VPN RECONNECTED SUCCESSFULLY!"
-                echo "1" > /tmp/vpn_ready
-            fi
-        done &
-    fi
-done
-) &
+# Wait for connection to establish
+echo "Waiting for VPN connection..."
+sleep 10
 
-# Keep container running
+# Check if connection is established
+if ping -c 1 1.1.1.1 > /dev/null 2>&1; then
+    echo "VPN CONNECTED SUCCESSFULLY!"
+    echo "1" > /tmp/vpn_ready
+else
+    echo "VPN connection failed!"
+    echo "0" > /tmp/vpn_ready
+fi
+
+# Keep container running and check connection periodically (but don't restart)
 echo "VPN setup complete, keeping container alive..."
-tail -f /dev/null 
+while true; do
+    sleep 300
+    if ping -c 1 1.1.1.1 > /dev/null 2>&1; then
+        # Connection is still up, no need to do anything
+        echo "VPN connection healthy"
+    else
+        # Just log that connection is down, no automatic restart
+        echo "VPN connection down. Manual intervention may be required."
+        echo "0" > /tmp/vpn_ready
+    fi
+done 
