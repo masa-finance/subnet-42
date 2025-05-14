@@ -140,12 +140,12 @@ services:
     command: >
       sh -c "apk add --no-cache docker-cli && 
              while true; do 
-               sleep $${RESTART_INTERVAL:-180}; 
+               sleep $${RESTART_INTERVAL:-900}; 
                echo 'Restarting VPN service for IP rotation...'; 
                docker restart $$(docker ps --filter 'name=vpn' -q); 
              done"
     environment:
-      - RESTART_INTERVAL=${VPN_RESTART_INTERVAL:-180}
+      - RESTART_INTERVAL=${VPN_RESTART_INTERVAL:-900}
     depends_on:
       - vpn
     logging:
