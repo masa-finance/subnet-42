@@ -73,12 +73,16 @@ You have two options for generating Twitter cookies:
    ```
    # Add your Twitter accounts in this format
    TWITTER_ACCOUNTS="username1:password1,username2:password2"
+   # Add backup email for verification (REQUIRED)
+   TWITTER_EMAIL="your_email@example.com"
    ```
+
+   The `TWITTER_EMAIL` is used for verification challenges during login.
 
 2. **Run the Cookie Generator Service**:
 
    ```bash
-   docker compose up cookies
+   docker compose --profile cookies up
    ```
 
    This service will:
@@ -86,6 +90,7 @@ You have two options for generating Twitter cookies:
    - Log in to your Twitter accounts
    - Generate authentication cookies
    - Save them to the `cookies/` directory in your project
+   - Handle verification challenges with manual intervention if needed
 
 3. **Verify Cookie Generation**:
 
@@ -109,9 +114,10 @@ If you're encountering CAPTCHA challenges or authentication issues with the auto
 
    ```bash
    export TWITTER_ACCOUNTS="username1:password1,username2:password2"
+   export TWITTER_EMAIL="your_email@example.com"
    ```
 
-   Or create a `.env` file in the scripts directory with this variable.
+   Or create a `.env` file in the scripts directory with these variables.
 
 3. **Run the Cookie Grabber Script**:
 
@@ -180,10 +186,28 @@ To make sure your worker-vpn container is properly routing through the VPN:
 
 Regular datacenter VPN IPs are often flagged and blocked by services. Residential IPs are much less likely to be detected, making them essential for reliable operation.
 
-## Troubleshooting
+## 🛠️ Troubleshooting
 
 ### Cookie Generator Issues
 
 - If the Docker cookie generator fails with `'ChromeOptions' object has no attribute 'headless'` error, use the manual script approach (Option 2)
-- If manual cookie generation fails, try increasing the `MAX_WAITING_TIME` constant in the script
-- Ensure Chrome is properly installed on your system when using the manual script
+- If manual cookie generation fails with timeout errors, you can modify the `WAITING_TIME` constant in the script (default: 3600 seconds)
+- For accounts that require verification, ensure you've set the `TWITTER_EMAIL` environment variable correctly
+- If using email verification, check that the email account is accessible and can receive Twitter verification codes
+- Make sure Chrome is properly installed on your system when using the manual script
+
+### Monitoring the Cookie Generation Process
+
+- When using the Docker cookie generator, you can enable VNC to view the browser:
+  ```
+  ENABLE_VNC=true docker compose --profile cookies up
+  ```
+  Then connect to the container using a VNC viewer on port 5900
+
+### Advanced Email Verification
+
+For accounts that frequently require email verification:
+
+- The script supports a special password format: `himynameisjohn`
+- It will use your `TWITTER_EMAIL` with plus addressing, like: `your_email+john@example.com`
+- This helps manage multiple verification emails in a single inbox
