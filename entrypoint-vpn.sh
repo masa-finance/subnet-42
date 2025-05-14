@@ -34,6 +34,7 @@ echo "0" > /tmp/vpn_ready
 # Start a background process to watch for the initialization message
 echo "Starting OpenVPN log monitor..."
 openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3 2>&1 | tee /var/log/openvpn.log | while read line; do
+    # Show all messages but highlight important ones
     echo "$line"
     if [[ "$line" == *"Initialization Sequence Completed"* ]]; then
         echo "VPN CONNECTED SUCCESSFULLY!"
