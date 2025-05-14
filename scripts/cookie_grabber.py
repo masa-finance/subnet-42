@@ -778,19 +778,31 @@ def process_account_state_machine(driver, username, password):
 
         while time.time() - wait_start < max_wait:
             # Check if document is ready
-            ready_state = driver.execute_script("return document.readyState")
+            try:
+                ready_state = driver.execute_script("return document.readyState")
 
-            # Check if login form elements are visible
-            login_elements = driver.find_elements(
-                By.CSS_SELECTOR,
-                'input[name="text"], div[role="button"], form[data-testid="LoginForm"]',
-            )
+                # Check if login form elements are visible
+                login_elements = driver.find_elements(
+                    By.CSS_SELECTOR,
+                    'input[name="text"], div[role="button"], form[data-testid="LoginForm"]',
+                )
 
-            if ready_state == "complete" and any(
-                elem.is_displayed() for elem in login_elements if login_elements
-            ):
-                logger.info("Login page loaded successfully")
-                break
+                if ready_state == "complete" and any(
+                    elem.is_displayed() for elem in login_elements if login_elements
+                ):
+                    logger.info("Login page loaded successfully")
+                    break
+            except WebDriverException as e:
+                # Check if window was closed - if so, propagate this up immediately
+                if (
+                    "no such window" in str(e).lower()
+                    or "no such session" in str(e).lower()
+                ):
+                    logger.info(
+                        "Browser window was closed during page load. Might be for VPN switching."
+                    )
+                    raise
+                logger.warning(f"Error checking page load: {str(e)}")
 
             # Short sleep between checks
             time.sleep(0.5)
@@ -800,7 +812,13 @@ def process_account_state_machine(driver, username, password):
             logger.warning(
                 "Timed out waiting for login page to fully load, but continuing anyway"
             )
-    except Exception as e:
+    except WebDriverException as e:
+        # Check if window was closed - if so, propagate this up immediately
+        if "no such window" in str(e).lower() or "no such session" in str(e).lower():
+            logger.info(
+                "Browser window was closed during navigation. Might be for VPN switching."
+            )
+            raise
         logger.error(f"Failed to navigate to login page: {str(e)}")
         return False
 
@@ -811,64 +829,9 @@ def process_account_state_machine(driver, username, password):
     login_successful = False
     manual_intervention_active = False
 
-    # Network connectivity variables
-    network_disconnection_count = 0
-    last_network_check_time = time.time()
-    network_check_interval = 10  # Check connectivity every 10 seconds
-    max_network_wait = 300  # Wait up to 5 minutes for network to recover
-
     # State machine loop
     while time.time() - start_time < WAITING_TIME:
         try:
-            # Check network connectivity periodically
-            if time.time() - last_network_check_time > network_check_interval:
-                try:
-                    # A lightweight check to see if we can connect to Twitter
-                    driver.execute_script("return navigator.onLine")
-                    network_disconnection_count = 0  # Reset counter if successful
-                    last_network_check_time = time.time()
-                except WebDriverException as e:
-                    if (
-                        "net::" in str(e)
-                        or "ERR_INTERNET_DISCONNECTED" in str(e)
-                        or "ERR_NETWORK_CHANGED" in str(e)
-                    ):
-                        network_disconnection_count += 1
-                        logger.warning(
-                            f"Network appears to be down or changing. Waiting... (Attempt {network_disconnection_count})"
-                        )
-
-                        # If network is down for too long, try to recover
-                        if network_disconnection_count >= 3:
-                            logger.info(
-                                "Network change detected. Waiting for connectivity to restore..."
-                            )
-
-                            # Wait longer between retries as the count increases
-                            wait_time = min(5 * network_disconnection_count, 30)
-                            time.sleep(wait_time)
-
-                            # Try to navigate back to last known URL to restore session
-                            try:
-                                current_url = (
-                                    driver.current_url
-                                )  # May raise exception if disconnected
-                                logger.info(
-                                    f"Connection seems restored. Current URL: {current_url}"
-                                )
-                                last_network_check_time = time.time()
-                            except:
-                                # If still disconnected, check if we've waited too long
-                                if time.time() - last_action_time > max_network_wait:
-                                    logger.error(
-                                        "Network connectivity not restored within timeout. Giving up on this account."
-                                    )
-                                    return False
-
-                                logger.info("Still waiting for network to restore...")
-                                time.sleep(10)  # Wait and try again
-                                continue
-
             current_url = driver.current_url
 
             # Check if already logged in
@@ -1026,68 +989,18 @@ def process_account_state_machine(driver, username, password):
             time.sleep(POLLING_INTERVAL)
 
         except WebDriverException as e:
-            if "no such window" in str(e).lower():
-                logger.error("Browser window was closed")
-                return False
-
-            # Handle network-related errors
-            if any(
-                err in str(e).lower()
-                for err in [
-                    "net::",
-                    "err_internet_disconnected",
-                    "err_network_changed",
-                    "err_connection_refused",
-                    "err_connection_reset",
-                    "connection refused",
-                    "unable to connect",
-                    "network is unreachable",
-                ]
+            # Immediately propagate window closing exceptions
+            if (
+                "no such window" in str(e).lower()
+                or "no such session" in str(e).lower()
             ):
-                logger.warning(f"Network error detected: {str(e)}")
-                logger.info(
-                    "This could be due to VPN switching. Waiting for network to stabilize..."
-                )
+                logger.info("Browser window was closed. Might be for VPN switching.")
+                raise
 
-                # Wait for network to recover
-                recovery_wait = 15  # seconds
-                logger.info(
-                    f"Waiting {recovery_wait} seconds for network to stabilize..."
-                )
-                time.sleep(recovery_wait)
-
-                # Try to refresh the page to reset connection
-                try:
-                    logger.info("Attempting to refresh page...")
-                    driver.refresh()
-                    logger.info("Page refreshed successfully after network change")
-
-                    # Reset action time to prevent timeout
-                    last_action_time = time.time()
-                except Exception as refresh_err:
-                    logger.warning(f"Could not refresh page: {str(refresh_err)}")
-
-                    # If refresh fails, try navigating to the login URL directly
-                    try:
-                        logger.info("Attempting to navigate back to login page...")
-                        driver.get(TWITTER_LOGIN_URL)
-                        logger.info("Navigation successful after network change")
-
-                        # Reset action time to prevent timeout
-                        last_action_time = time.time()
-                    except Exception as nav_err:
-                        logger.error(
-                            f"Navigation failed. Network might still be unstable: {str(nav_err)}"
-                        )
-
-                        # Extend waiting time to allow for VPN stabilization
-                        logger.info("Waiting longer for network to stabilize...")
-                        time.sleep(30)
-
-                continue
-
+            # Handle other WebDriver exceptions
             logger.error(f"WebDriver error: {str(e)}")
             # Continue the loop to try again
+
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             # Continue the loop to try again
@@ -1102,7 +1015,16 @@ def process_account_state_machine(driver, username, password):
                     # Always navigate to twitter.com, never x.com
                     driver.get("https://twitter.com/home")
                     time.sleep(3)
-                except Exception as e:
+                except WebDriverException as e:
+                    # Check if window was closed
+                    if (
+                        "no such window" in str(e).lower()
+                        or "no such session" in str(e).lower()
+                    ):
+                        logger.info(
+                            "Browser window was closed after login. Might be for VPN switching."
+                        )
+                        raise
                     logger.warning(f"Failed to navigate to home page: {str(e)}")
 
             # Extract and save cookies
@@ -1116,6 +1038,18 @@ def process_account_state_machine(driver, username, password):
             logger.info(f"Saved cookies for {username} to {output_path}")
 
             return True
+        except WebDriverException as e:
+            # Check if window was closed
+            if (
+                "no such window" in str(e).lower()
+                or "no such session" in str(e).lower()
+            ):
+                logger.info(
+                    "Browser window was closed after login. Might be for VPN switching."
+                )
+                raise
+            logger.error(f"Error after successful login: {str(e)}")
+            return False
         except Exception as e:
             logger.error(f"Error after successful login: {str(e)}")
             return False
@@ -1151,11 +1085,11 @@ def main():
     # Create the output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Process accounts - with recovery for network issues
+    # Process accounts one by one
     current_account_index = 0
     while current_account_index < len(account_pairs):
         # Maximum number of retries for account processing
-        max_retries = 3
+        max_retries = 5  # Increased retries to allow for VPN switches
         retry_count = 0
         driver = None
 
@@ -1175,8 +1109,9 @@ def main():
             f"Processing account {current_account_index+1}/{len(account_pairs)}: {username}"
         )
 
-        # Try multiple times to handle the account
-        while retry_count < max_retries:
+        # Process account with potential window closing for VPN switching
+        success = False
+        while retry_count < max_retries and not success:
             try:
                 # Initialize a new driver for each retry
                 if driver is not None:
@@ -1186,45 +1121,62 @@ def main():
                         pass
 
                 driver = setup_driver()
+                logger.info(
+                    f"Browser initialized for account: {username} (attempt {retry_count+1}/{max_retries})"
+                )
 
                 # Process the current account
                 success = process_account_state_machine(driver, username, password)
-                logger.info(
-                    f"Account {username} processed with {'success' if success else 'failure'}"
-                )
 
-                # If successful or we've reached max retries, move to next account
-                if success or retry_count == max_retries - 1:
-                    break
+                if success:
+                    logger.info(f"Successfully processed account: {username}")
+                else:
+                    retry_count += 1
+                    logger.info(
+                        f"Account processing unsuccessful. Retries left: {max_retries - retry_count}"
+                    )
+                    time.sleep(10)  # Brief pause before retry
 
-                # If unsuccessful but still have retries left
-                retry_count += 1
-                logger.info(
-                    f"Retrying account {username} (Attempt {retry_count+1}/{max_retries})"
-                )
+            except WebDriverException as e:
+                # Special handling for closed window (VPN switching)
+                if (
+                    "no such window" in str(e).lower()
+                    or "no such session" in str(e).lower()
+                ):
+                    logger.info(
+                        "Browser window was closed. This might be for VPN switching."
+                    )
+                    logger.info(
+                        "Waiting 30 seconds for VPN to stabilize before retrying..."
+                    )
 
-                # Wait between retries
-                time.sleep(10)
+                    # Clean up the driver
+                    try:
+                        if driver:
+                            driver.quit()
+                    except:
+                        pass
+
+                    # Wait for VPN switch to complete
+                    time.sleep(30)
+
+                    # Don't increment retry count for intentional window closing
+                    # This allows unlimited VPN switches
+                    logger.info(f"Resuming after window close for account: {username}")
+                else:
+                    # Handle other WebDriver exceptions
+                    retry_count += 1
+                    logger.error(
+                        f"WebDriver error (attempt {retry_count}/{max_retries}): {str(e)}"
+                    )
+                    time.sleep(15)
 
             except Exception as e:
                 retry_count += 1
                 logger.error(
-                    f"Error processing account {username} (attempt {retry_count}/{max_retries}): {str(e)}"
+                    f"Unexpected error (attempt {retry_count}/{max_retries}): {str(e)}"
                 )
-
-                if (
-                    "ERR_NETWORK_CHANGED" in str(e)
-                    or "net::" in str(e)
-                    or "connection" in str(e).lower()
-                ):
-                    logger.warning(
-                        "Network-related error detected. Waiting for network to stabilize..."
-                    )
-                    # Wait longer for network to stabilize
-                    time.sleep(45)
-                else:
-                    # Regular error, shorter wait
-                    time.sleep(15)
+                time.sleep(15)
 
                 try:
                     if driver:
@@ -1232,26 +1184,31 @@ def main():
                 except:
                     pass
 
-                if retry_count >= max_retries:
-                    logger.error(
-                        f"Maximum retries reached for account {username}. Moving to next account."
-                    )
-
-        # Move to next account
-        current_account_index += 1
-
-        # Clean up the driver before moving to next account
+        # Clean up the driver
         try:
             if driver:
                 driver.quit()
         except:
             pass
 
-        # Cooldown between accounts
-        if current_account_index < len(account_pairs):
-            cool_down = random.uniform(5, 10)  # 5-10 seconds cooldown
-            logger.info(f"Cooling down for {cool_down:.1f} seconds before next account")
-            time.sleep(cool_down)
+        # Move to next account only if successful or max retries reached
+        if success or retry_count >= max_retries:
+            if success:
+                logger.info(f"Successfully completed account: {username}")
+            else:
+                logger.warning(
+                    f"Failed to process account after {max_retries} attempts: {username}"
+                )
+
+            current_account_index += 1
+
+            # Cooldown between accounts
+            if current_account_index < len(account_pairs):
+                cool_down = random.uniform(5, 10)  # 5-10 seconds cooldown
+                logger.info(
+                    f"Cooling down for {cool_down:.1f} seconds before next account"
+                )
+                time.sleep(cool_down)
 
     logger.info("All accounts processed")
 
