@@ -22,7 +22,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(f"{OUTPUT_DIR}/cookie_grabber.log"),
+        # logging.FileHandler(f"{OUTPUT_DIR}/cookie_grabber.log"),
         logging.StreamHandler(),
     ],
 )
@@ -34,6 +34,7 @@ COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 
 def take_screenshot(driver, name):
     """Take a screenshot and save it with a timestamp."""
+    return
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{OUTPUT_DIR}/{timestamp}_{name}.png"
@@ -347,9 +348,9 @@ def generate_cookies_json(cookie_values):
     logger.info("Generating cookies JSON")
     cookies = []
     for name in COOKIE_NAMES:
-        value = cookie_values.get(name, "<YOUR_VALUE_HERE>")
-        if value == "<YOUR_VALUE_HERE>":
-            logger.warning(f"Using placeholder for missing cookie: {name}")
+        value = cookie_values.get(name, "")
+        if value == "":
+            logger.warning(f"Using empty string for missing cookie: {name}")
         cookies.append(create_cookie_template(name, value))
     return cookies
 

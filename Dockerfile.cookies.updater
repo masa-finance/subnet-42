@@ -1,0 +1,57 @@
+FROM alpine:latest
+
+# Install required packages
+RUN apk add --no-cache \
+    bash \
+    openssh-client \
+    docker-cli \
+    curl
+
+# Create necessary directories
+RUN mkdir -p /app/cookies /root/.ssh
+
+# Copy the update script
+COPY ./scripts/update_cookies.sh /app/
+RUN chmod +x /app/update_cookies.sh
+
+# Set working directory
+WORKDIR /app
+
+# Create entrypoint script
+RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
+    echo 'set -e' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Wait for the cookies to be generated' >> /app/entrypoint.sh && \
+    echo 'echo "Waiting for cookies to be available..."' >> /app/entrypoint.sh && \
+    echo 'while [ ! "$(ls -A /app/cookies 2>/dev/null)" ]; do' >> /app/entrypoint.sh && \
+    echo '    sleep 2' >> /app/entrypoint.sh && \
+    echo 'done' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Copy and set permissions for SSH key' >> /app/entrypoint.sh && \
+    echo 'if [ -f "/app/key.pem" ]; then' >> /app/entrypoint.sh && \
+    echo '    echo "Found SSH key at /app/key.pem"' >> /app/entrypoint.sh && \
+    echo '    cp "/app/key.pem" /root/.ssh/id_rsa' >> /app/entrypoint.sh && \
+    echo '    chmod 600 /root/.ssh/id_rsa' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '    # Disable host key checking for non-interactive use' >> /app/entrypoint.sh && \
+    echo '    echo "StrictHostKeyChecking no" > /root/.ssh/config' >> /app/entrypoint.sh && \
+    echo 'else' >> /app/entrypoint.sh && \
+    echo '    echo "SSH key not found at /app/key.pem"' >> /app/entrypoint.sh && \
+    echo '    exit 1' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# If we are running locally (on the same host as the Docker daemon)' >> /app/entrypoint.sh && \
+    echo 'if [ "$REMOTE_HOST" = "localhost" ] || [ "$REMOTE_HOST" = "127.0.0.1" ]; then' >> /app/entrypoint.sh && \
+    echo '    echo "Running in local mode - directly copying to volume..."' >> /app/entrypoint.sh && \
+    echo '    docker run --rm -v cookies-volume:/cookies -v /app/cookies:/source alpine sh -c "cp -r /source/* /cookies/ && chown -R 1000:1000 /cookies/"' >> /app/entrypoint.sh && \
+    echo 'else' >> /app/entrypoint.sh && \
+    echo '    echo "Running in remote mode - transferring to $REMOTE_HOST..."' >> /app/entrypoint.sh && \
+    echo '    # Execute the update script' >> /app/entrypoint.sh && \
+    echo '    /app/update_cookies.sh' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo 'echo "Cookie update process completed!"' >> /app/entrypoint.sh
+
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"] 
