@@ -131,6 +131,31 @@ services:
         mode: "non-blocking"
         max-buffer-size: "4m"
 
+  vpn-restarter:
+    profiles: ["miner-vpn"]
+    image: alpine:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "apk add --no-cache docker-cli && 
+             while true; do 
+               sleep $${RESTART_INTERVAL:-180}; 
+               echo 'Restarting VPN service for IP rotation...'; 
+               docker restart $$(docker ps --filter 'name=vpn' -q); 
+             done"
+    environment:
+      - RESTART_INTERVAL=${VPN_RESTART_INTERVAL:-180}
+    depends_on:
+      - vpn
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
 
   cookies-generator:
     profiles: ["cookies"]
