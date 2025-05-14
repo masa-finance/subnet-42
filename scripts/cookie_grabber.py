@@ -408,16 +408,27 @@ def needs_verification(driver):
 
 def extract_email_from_password(password):
     """Extract email from password assuming format 'himynameis<name>'."""
+    # Get base email from environment variable - required
+    base_email = os.environ.get("TWITTER_EMAIL")
+    if not base_email:
+        logger.error("TWITTER_EMAIL environment variable not set. This is required.")
+        # Return a placeholder that will likely fail but doesn't expose personal info
+        return "email_not_configured@example.com"
+
+    # Extract the username part from base email for plus addressing
+    base_username = base_email.split("@")[0]
+    domain = base_email.split("@")[1]
+
     try:
         # Check if password starts with 'himynameis'
         if password.startswith("himynameis"):
             name = password[10:]  # Extract everything after 'himynameis'
-            return f"grantdfoster+{name}@gmail.com"
+            return f"{base_username}+{name}@{domain}"
     except:
         pass
 
-    # Fall back to a default
-    return "grantdfoster@gmail.com"
+    # Fall back to the base email
+    return base_email
 
 
 def extract_cookies(driver):
@@ -717,6 +728,12 @@ def process_account_state_machine(driver, username, password):
 def main():
     """Main function to process Twitter accounts from environment variable."""
     logger.info("Starting cookie grabber")
+
+    # Check for required environment variables
+    if not os.environ.get("TWITTER_EMAIL"):
+        logger.error("TWITTER_EMAIL environment variable is not set.")
+        logger.error("This is required for email verification during login.")
+        return
 
     # Get Twitter accounts from environment variable
     twitter_accounts_str = os.environ.get("TWITTER_ACCOUNTS", "")
