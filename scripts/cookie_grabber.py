@@ -811,9 +811,64 @@ def process_account_state_machine(driver, username, password):
     login_successful = False
     manual_intervention_active = False
 
+    # Network connectivity variables
+    network_disconnection_count = 0
+    last_network_check_time = time.time()
+    network_check_interval = 10  # Check connectivity every 10 seconds
+    max_network_wait = 300  # Wait up to 5 minutes for network to recover
+
     # State machine loop
     while time.time() - start_time < WAITING_TIME:
         try:
+            # Check network connectivity periodically
+            if time.time() - last_network_check_time > network_check_interval:
+                try:
+                    # A lightweight check to see if we can connect to Twitter
+                    driver.execute_script("return navigator.onLine")
+                    network_disconnection_count = 0  # Reset counter if successful
+                    last_network_check_time = time.time()
+                except WebDriverException as e:
+                    if (
+                        "net::" in str(e)
+                        or "ERR_INTERNET_DISCONNECTED" in str(e)
+                        or "ERR_NETWORK_CHANGED" in str(e)
+                    ):
+                        network_disconnection_count += 1
+                        logger.warning(
+                            f"Network appears to be down or changing. Waiting... (Attempt {network_disconnection_count})"
+                        )
+
+                        # If network is down for too long, try to recover
+                        if network_disconnection_count >= 3:
+                            logger.info(
+                                "Network change detected. Waiting for connectivity to restore..."
+                            )
+
+                            # Wait longer between retries as the count increases
+                            wait_time = min(5 * network_disconnection_count, 30)
+                            time.sleep(wait_time)
+
+                            # Try to navigate back to last known URL to restore session
+                            try:
+                                current_url = (
+                                    driver.current_url
+                                )  # May raise exception if disconnected
+                                logger.info(
+                                    f"Connection seems restored. Current URL: {current_url}"
+                                )
+                                last_network_check_time = time.time()
+                            except:
+                                # If still disconnected, check if we've waited too long
+                                if time.time() - last_action_time > max_network_wait:
+                                    logger.error(
+                                        "Network connectivity not restored within timeout. Giving up on this account."
+                                    )
+                                    return False
+
+                                logger.info("Still waiting for network to restore...")
+                                time.sleep(10)  # Wait and try again
+                                continue
+
             current_url = driver.current_url
 
             # Check if already logged in
@@ -974,6 +1029,63 @@ def process_account_state_machine(driver, username, password):
             if "no such window" in str(e).lower():
                 logger.error("Browser window was closed")
                 return False
+
+            # Handle network-related errors
+            if any(
+                err in str(e).lower()
+                for err in [
+                    "net::",
+                    "err_internet_disconnected",
+                    "err_network_changed",
+                    "err_connection_refused",
+                    "err_connection_reset",
+                    "connection refused",
+                    "unable to connect",
+                    "network is unreachable",
+                ]
+            ):
+                logger.warning(f"Network error detected: {str(e)}")
+                logger.info(
+                    "This could be due to VPN switching. Waiting for network to stabilize..."
+                )
+
+                # Wait for network to recover
+                recovery_wait = 15  # seconds
+                logger.info(
+                    f"Waiting {recovery_wait} seconds for network to stabilize..."
+                )
+                time.sleep(recovery_wait)
+
+                # Try to refresh the page to reset connection
+                try:
+                    logger.info("Attempting to refresh page...")
+                    driver.refresh()
+                    logger.info("Page refreshed successfully after network change")
+
+                    # Reset action time to prevent timeout
+                    last_action_time = time.time()
+                except Exception as refresh_err:
+                    logger.warning(f"Could not refresh page: {str(refresh_err)}")
+
+                    # If refresh fails, try navigating to the login URL directly
+                    try:
+                        logger.info("Attempting to navigate back to login page...")
+                        driver.get(TWITTER_LOGIN_URL)
+                        logger.info("Navigation successful after network change")
+
+                        # Reset action time to prevent timeout
+                        last_action_time = time.time()
+                    except Exception as nav_err:
+                        logger.error(
+                            f"Navigation failed. Network might still be unstable: {str(nav_err)}"
+                        )
+
+                        # Extend waiting time to allow for VPN stabilization
+                        logger.info("Waiting longer for network to stabilize...")
+                        time.sleep(30)
+
+                continue
+
             logger.error(f"WebDriver error: {str(e)}")
             # Continue the loop to try again
         except Exception as e:
@@ -1039,142 +1151,109 @@ def main():
     # Create the output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Maximum number of retries for ChromeDriver initialization
-    max_retries = 3
-    retry_count = 0
-    driver = None
+    # Process accounts - with recovery for network issues
+    current_account_index = 0
+    while current_account_index < len(account_pairs):
+        # Maximum number of retries for account processing
+        max_retries = 3
+        retry_count = 0
+        driver = None
 
-    while retry_count < max_retries:
-        try:
-            # Initialize browser once for all accounts
-            if driver is not None:
-                try:
-                    driver.quit()
-                except:
-                    pass
+        account_pair = account_pairs[current_account_index]
+        if ":" not in account_pair:
+            logger.error(
+                f"Invalid account format: {account_pair}. Expected format: username:password"
+            )
+            current_account_index += 1
+            continue
 
-            driver = setup_driver()
+        username, password = account_pair.split(":", 1)
+        username = username.strip()
+        password = password.strip()
 
-            # Process accounts
-            for account_pair in account_pairs:
-                if ":" not in account_pair:
-                    logger.error(
-                        f"Invalid account format: {account_pair}. Expected format: username:password"
-                    )
-                    continue
+        logger.info(
+            f"Processing account {current_account_index+1}/{len(account_pairs)}: {username}"
+        )
 
-                username, password = account_pair.split(":", 1)
-                username = username.strip()
-                password = password.strip()
+        # Try multiple times to handle the account
+        while retry_count < max_retries:
+            try:
+                # Initialize a new driver for each retry
+                if driver is not None:
+                    try:
+                        driver.quit()
+                    except:
+                        pass
 
+                driver = setup_driver()
+
+                # Process the current account
                 success = process_account_state_machine(driver, username, password)
                 logger.info(
                     f"Account {username} processed with {'success' if success else 'failure'}"
                 )
 
-                # Transition to next account gently without resetting browser state
-                if account_pair != account_pairs[-1]:  # If not the last account
-                    try:
-                        # Try logging out first if possible
-                        try:
-                            # Look for logout option in account menu
-                            menu_buttons = driver.find_elements(
-                                By.CSS_SELECTOR,
-                                'div[aria-label="Account menu"], div[data-testid="AppTabBar_More_Menu"]',
-                            )
-                            for menu in menu_buttons:
-                                if menu.is_displayed():
-                                    menu.click()
-                                    logger.info("Clicked account menu")
-                                    time.sleep(1)
-                                    break
+                # If successful or we've reached max retries, move to next account
+                if success or retry_count == max_retries - 1:
+                    break
 
-                            # Now look for logout button
-                            logout_buttons = driver.find_elements(
-                                By.XPATH,
-                                "//*[contains(text(), 'Log out') or contains(text(), 'Logout')]",
-                            )
-                            if logout_buttons and any(
-                                btn.is_displayed() for btn in logout_buttons
-                            ):
-                                for btn in logout_buttons:
-                                    if btn.is_displayed():
-                                        btn.click()
-                                        logger.info("Clicked Logout button")
-                                        time.sleep(2)
-                                        # Try to confirm logout if needed
-                                        confirm_buttons = driver.find_elements(
-                                            By.XPATH,
-                                            "//*[contains(text(), 'Log out') or contains(text(), 'Logout') or contains(text(), 'Confirm')]",
-                                        )
-                                        for confirm in confirm_buttons:
-                                            if confirm.is_displayed():
-                                                confirm.click()
-                                                logger.info("Confirmed logout")
-                                                time.sleep(2)
-                                                break
-                                        break
-                        except Exception as e:
-                            logger.warning(f"Could not perform logout: {str(e)}")
+                # If unsuccessful but still have retries left
+                retry_count += 1
+                logger.info(
+                    f"Retrying account {username} (Attempt {retry_count+1}/{max_retries})"
+                )
 
-                        # Navigate to login page without clearing cookies
-                        driver.get(TWITTER_LOGIN_URL)
-                        logger.info(
-                            "Navigated to login page without clearing browser state"
-                        )
+                # Wait between retries
+                time.sleep(10)
 
-                        # Wait for login page to load
-                        wait_start = time.time()
-                        max_wait = 10  # Maximum seconds to wait
-                        while time.time() - wait_start < max_wait:
-                            ready_state = driver.execute_script(
-                                "return document.readyState"
-                            )
-                            login_elements = driver.find_elements(
-                                By.CSS_SELECTOR,
-                                'input[name="text"], div[role="button"], form[data-testid="LoginForm"]',
-                            )
-                            if ready_state == "complete" and any(
-                                elem.is_displayed()
-                                for elem in login_elements
-                                if login_elements
-                            ):
-                                logger.info(
-                                    "Login page loaded successfully for next account"
-                                )
-                                break
-                            time.sleep(0.5)
-                    except Exception as e:
-                        logger.warning(f"Error during account transition: {str(e)}")
+            except Exception as e:
+                retry_count += 1
+                logger.error(
+                    f"Error processing account {username} (attempt {retry_count}/{max_retries}): {str(e)}"
+                )
 
-                    cool_down = random.uniform(2, 5)  # 2-5 seconds cooldown
-                    logger.info(
-                        f"Cooling down for {cool_down:.1f} seconds before next account"
+                if (
+                    "ERR_NETWORK_CHANGED" in str(e)
+                    or "net::" in str(e)
+                    or "connection" in str(e).lower()
+                ):
+                    logger.warning(
+                        "Network-related error detected. Waiting for network to stabilize..."
                     )
-                    time.sleep(cool_down)
+                    # Wait longer for network to stabilize
+                    time.sleep(45)
+                else:
+                    # Regular error, shorter wait
+                    time.sleep(15)
 
-            logger.info("All accounts processed, closing browser")
-            driver.quit()
-            break  # Exit the retry loop on success
+                try:
+                    if driver:
+                        driver.quit()
+                except:
+                    pass
 
-        except Exception as e:
-            retry_count += 1
-            logger.error(
-                f"Critical error (attempt {retry_count}/{max_retries}): {str(e)}"
-            )
-            try:
-                if driver:
-                    driver.quit()
-            except:
-                pass
+                if retry_count >= max_retries:
+                    logger.error(
+                        f"Maximum retries reached for account {username}. Moving to next account."
+                    )
 
-            if retry_count < max_retries:
-                logger.info(f"Waiting 30 seconds before retrying...")
-                time.sleep(30)
-            else:
-                logger.error("Maximum retry attempts reached. Giving up.")
+        # Move to next account
+        current_account_index += 1
 
-    logger.info("Cookie grabber completed")
+        # Clean up the driver before moving to next account
+        try:
+            if driver:
+                driver.quit()
+        except:
+            pass
+
+        # Cooldown between accounts
+        if current_account_index < len(account_pairs):
+            cool_down = random.uniform(5, 10)  # 5-10 seconds cooldown
+            logger.info(f"Cooling down for {cool_down:.1f} seconds before next account")
+            time.sleep(cool_down)
+
+    logger.info("All accounts processed")
 
 
 if __name__ == "__main__":
