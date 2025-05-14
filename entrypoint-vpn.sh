@@ -31,42 +31,15 @@ iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
 touch /tmp/vpn_ready
 echo "0" > /tmp/vpn_ready
 
-# Function to start OpenVPN
-start_openvpn() {
-  echo "Starting OpenVPN..."
-  # Kill any existing openvpn process
-  pkill -f openvpn || true
-  # Clear previous routing rules for tun0 if they exist
-  ip route flush table main dev tun0 2>/dev/null || true
-  # Re-add NAT rule
-  iptables -t nat -F
-  iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
-  
-  # Start OpenVPN in background and monitor logs
-  openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3 2>&1 | tee /var/log/openvpn.log | while read line; do
+# Start a background process to watch for the initialization message
+echo "Starting OpenVPN log monitor..."
+openvpn --config /etc/openvpn/config/config.ovpn --auth-user-pass /etc/openvpn/config/auth.txt --auth-nocache --verb 3 2>&1 | tee /var/log/openvpn.log | while read line; do
     echo "$line"
     if [[ "$line" == *"Initialization Sequence Completed"* ]]; then
-      echo "VPN CONNECTED SUCCESSFULLY!"
-      echo "1" > /tmp/vpn_ready
+        echo "VPN CONNECTED SUCCESSFULLY!"
+        echo "1" > /tmp/vpn_ready
     fi
-  done &
-}
-
-# Start VPN for the first time
-start_openvpn
-
-# Background process for periodic VPN restart
-restart_vpn_periodically() {
-  while true; do
-    sleep 300  # 5 minutes
-    echo "Scheduled VPN restart after 15 minutes"
-    echo "0" > /tmp/vpn_ready
-    start_openvpn
-  done
-}
-
-# Start the periodic restart in the background
-restart_vpn_periodically &
+done &
 
 # Keep container running
 echo "VPN setup complete, keeping container alive..."
