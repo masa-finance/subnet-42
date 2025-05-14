@@ -58,8 +58,8 @@ start_openvpn
 # Background process for periodic VPN restart
 restart_vpn_periodically() {
   while true; do
-    sleep 1800  # 30 minutes
-    echo "Scheduled VPN restart after 30 minutes"
+    sleep 900  # 15 minutes
+    echo "Scheduled VPN restart after 15 minutes"
     echo "0" > /tmp/vpn_ready
     start_openvpn
   done
