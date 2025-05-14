@@ -116,10 +116,6 @@ services:
     volumes:
       - ./vpn:/etc/openvpn/config
     env_file: .env
-    environment:
-      - MIN_ROTATION_MINUTES=${MIN_ROTATION_MINUTES:-30}
-      - MAX_ROTATION_MINUTES=${MAX_ROTATION_MINUTES:-60}
-      - IP_VERIFICATION_ENABLED=${IP_VERIFICATION_ENABLED:-true}
     healthcheck:
       test: ["CMD", "bash", "-c", "[ \"$(cat /tmp/vpn_ready)\" = \"1\" ]"]
       interval: 5s
