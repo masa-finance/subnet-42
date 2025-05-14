@@ -107,8 +107,11 @@ If you're encountering CAPTCHA challenges or authentication issues with the auto
 1. **Install Required Dependencies**:
 
    ```bash
-   pip install selenium==4.14.0 undetected-chromedriver==3.5.3 selenium-stealth==1.0.6 python-dotenv==1.0.0
+   # For running cookie_grabber.py directly with Python (non-headless mode)
+   pip install selenium selenium-stealth python-dotenv
    ```
+
+   > **Note**: Running the script with Python directly opens a visible Chrome browser window, allowing you to interact with CAPTCHAs and verification challenges. This is different from the Docker approach which runs in headless mode.
 
 2. **Set Environment Variables**:
 
@@ -140,7 +143,7 @@ If you're encountering CAPTCHA challenges or authentication issues with the auto
    - The script will detect when you've solved it and continue automatically
    - Cookies will be saved to the `../cookies` directory
 
-This manual approach is more reliable for accounts that frequently encounter verification challenges.
+This manual approach is more reliable for accounts that frequently encounter verification challenges, as you can directly interact with the browser to complete any verification steps.
 
 ### 3️⃣ Launch Everything with One Command
 

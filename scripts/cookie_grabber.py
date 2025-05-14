@@ -6,17 +6,12 @@ import logging
 import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import WebDriverException
 import random
 from selenium_stealth import stealth
-import undetected_chromedriver as uc
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
-import shutil
-from pathlib import Path
 
 # Setup logging first
 logging.basicConfig(
@@ -44,28 +39,69 @@ COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 # Twitter domains to handle - We will only use twitter.com
 TWITTER_DOMAINS = ["twitter.com"]
 
+# Twitter login URL
+TWITTER_LOGIN_URL = "https://twitter.com/i/flow/login"
+
 # Constants
 POLLING_INTERVAL = 1  # Check every 1 second
-WAITING_TIME = 3600  # Wait up to 1 hour for manual verification
+WAITING_TIME = 300  # Wait up to 5 minutes for manual verification
 CLICK_WAIT = 5  # Wait 5 seconds after clicking buttons
 
 
-def create_cookie_template(name, value, domain="twitter.com"):
+def get_future_date(days=7, hours=0, minutes=0, seconds=0):
+    """
+    Generate a slightly randomized ISO 8601 date string for a specified time in the future.
+
+    Args:
+        days: Number of days in the future
+        hours: Number of hours to add
+        minutes: Number of minutes to add
+        seconds: Number of seconds to add
+
+    Returns:
+        ISO 8601 formatted date string with slight randomization
+    """
+    # Add slight randomization to make cookies appear more natural
+    random_seconds = random.uniform(0, 3600)  # Random seconds (up to 1 hour)
+    random_minutes = random.uniform(0, 60)  # Random minutes (up to 1 hour)
+
+    future_date = datetime.datetime.now() + datetime.timedelta(
+        days=days,
+        hours=hours,
+        minutes=minutes + random_minutes,
+        seconds=seconds + random_seconds,
+    )
+
+    # Format in ISO 8601 format with timezone information
+    return future_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def create_cookie_template(name, value, domain="twitter.com", expires=None):
     """
     Create a standard cookie template with the given name and value.
     Note: Cookie values should not contain double quotes as they cause errors in Go's HTTP client.
+
+    Args:
+        name: Name of the cookie
+        value: Value of the cookie
+        domain: Domain for the cookie
+        expires: Optional expiration date string in ISO 8601 format
     """
     # Ensure no quotes in cookie value to prevent HTTP header issues
     if value.startswith('"') and value.endswith('"'):
         value = value[1:-1]
     value = value.replace('"', "")
 
+    # If no expiration date is provided, use the default "0001-01-01T00:00:00Z"
+    if expires is None:
+        expires = "0001-01-01T00:00:00Z"
+
     return {
         "Name": name,
         "Value": value,
         "Path": "",
         "Domain": domain,
-        "Expires": "0001-01-01T00:00:00Z",
+        "Expires": expires,
         "RawExpires": "",
         "MaxAge": 0,
         "Secure": False,
@@ -92,12 +128,78 @@ def setup_realistic_profile(temp_profile):
         "wikipedia.org",
     ]
 
+    # Create a dummy history file
+    history_file = os.path.join(history_dir, "History")
+    try:
+        with open(history_file, "w") as f:
+            # Just create an empty file to simulate history presence
+            f.write("")
+
+        # Create bookmark file with common sites
+        bookmarks_file = os.path.join(history_dir, "Bookmarks")
+        bookmarks_data = {
+            "roots": {
+                "bookmark_bar": {
+                    "children": [
+                        {"name": site, "url": f"https://{site}"}
+                        for site in common_sites
+                    ],
+                    "date_added": str(int(time.time())),
+                    "date_modified": str(int(time.time())),
+                    "name": "Bookmarks Bar",
+                    "type": "folder",
+                }
+            },
+            "version": 1,
+        }
+        with open(bookmarks_file, "w") as f:
+            json.dump(bookmarks_data, f)
+
+        # Create preferences file with some realistic settings
+        preferences_file = os.path.join(history_dir, "Preferences")
+        preferences_data = {
+            "browser": {
+                "last_known_google_url": "https://www.google.com/",
+                "last_prompted_google_url": "https://www.google.com/",
+                "show_home_button": True,
+                "custom_chrome_frame": False,
+            },
+            "homepage": "https://www.google.com",
+            "session": {
+                "restore_on_startup": 1,
+                "startup_urls": [f"https://{random.choice(common_sites)}"],
+            },
+            "search": {"suggest_enabled": True},
+            "translate": {"enabled": True},
+        }
+        with open(preferences_file, "w") as f:
+            json.dump(preferences_data, f)
+
+        logger.info("Created realistic browser profile with history and preferences")
+    except Exception as e:
+        logger.warning(f"Failed to create history files: {str(e)}")
+
     # Add a dummy extension folder to simulate common extensions
     ext_dir = os.path.join(temp_profile, "Default", "Extensions")
     os.makedirs(ext_dir, exist_ok=True)
 
-    # Copy a safe, common extension if available (optional)
-    # e.g., uBlock Origin, etc.
+    # Create dummy extension folders for common extensions
+    common_extensions = [
+        "aapbdbdomjkkjkaonfhkkikfgjllcleb",  # Google Translate
+        "ghbmnnjooekpmoecnnnilnnbdlolhkhi",  # Google Docs
+        "cjpalhdlnbpafiamejdnhcphjbkeiagm",  # uBlock Origin
+    ]
+
+    for ext_id in common_extensions:
+        ext_path = os.path.join(ext_dir, ext_id)
+        os.makedirs(ext_path, exist_ok=True)
+        # Create a minimal manifest file
+        manifest_path = os.path.join(ext_path, "manifest.json")
+        try:
+            with open(manifest_path, "w") as f:
+                f.write("{}")
+        except Exception as e:
+            logger.warning(f"Failed to create extension manifest: {str(e)}")
 
     return temp_profile
 
@@ -149,16 +251,29 @@ def setup_driver():
     # Set up more realistic browser profile
     temp_profile = setup_realistic_profile(temp_profile)
 
-    # Add proxy support if provided
-    if os.environ.get("USE_PROXY") == "true":
-        proxy = os.environ.get("PROXY_SERVER")
-        if proxy:
-            logger.info(f"Using proxy: {proxy}")
-            options.add_argument(f"--proxy-server={proxy}")
-
     # Add headers to appear more like a genuine browser
     options.add_argument("--accept-lang=en-US,en;q=0.9")
     options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+
+    # Check for proxy environment variables and configure proxy if available
+    # This is especially important when running behind a VPN
+    proxy_http = os.environ.get("http_proxy")
+    proxy_https = os.environ.get("https_proxy")
+
+    if proxy_http or proxy_https:
+        proxy_to_use = proxy_http or proxy_https
+        logger.info(f"Detected proxy settings: {proxy_to_use}")
+
+        # Format the proxy properly for Chrome
+        if proxy_to_use.startswith("http://"):
+            proxy_to_use = proxy_to_use[7:]  # Remove http:// prefix
+
+        options.add_argument(f"--proxy-server={proxy_to_use}")
+        logger.info(f"Configured Chrome to use proxy: {proxy_to_use}")
+
+        # Add additional settings to help with proxy connectivity
+        options.add_argument("--ignore-certificate-errors")
+        options.add_argument("--disable-extensions")
 
     try:
         logger.info("Initializing Chrome driver...")
@@ -289,6 +404,15 @@ def setup_driver():
             logger.info("Trying with minimal Chrome options...")
             minimal_options = webdriver.ChromeOptions()
             minimal_options.add_argument("--no-sandbox")
+
+            # Add proxy settings to minimal options if available
+            if proxy_http or proxy_https:
+                proxy_to_use = proxy_http or proxy_https
+                if proxy_to_use.startswith("http://"):
+                    proxy_to_use = proxy_to_use[7:]  # Remove http:// prefix
+                minimal_options.add_argument(f"--proxy-server={proxy_to_use}")
+                minimal_options.add_argument("--ignore-certificate-errors")
+
             driver = webdriver.Chrome(options=minimal_options)
             return driver
         except Exception as e2:
@@ -301,18 +425,6 @@ def human_like_typing(element, text):
     for char in text:
         element.send_keys(char)
         time.sleep(random.uniform(0.05, 0.25))  # Random delay between keypresses
-
-
-def add_manual_action_notice(driver, message="MANUAL ACTION REQUIRED"):
-    """Add a visual notification for manual action."""
-    # Disabled as requested
-    pass
-
-
-def remove_manual_action_notice(driver):
-    """Remove the manual action notice."""
-    # Disabled as requested
-    pass
 
 
 def find_and_fill_input(driver, input_type, value):
@@ -611,29 +723,36 @@ def generate_cookies_json(cookie_values, domain="twitter.com"):
     # Always use twitter.com domain regardless of what's passed in
     domain = "twitter.com"
     logger.info(f"Generating cookies JSON for domain: {domain}")
+
+    # Determine expiration dates for different cookie types
+    one_week_future = get_future_date(days=7)
+    one_month_future = get_future_date(days=30)
+
     cookies = []
     for name in COOKIE_NAMES:
         value = cookie_values.get(name, "")
         if value == "":
             logger.warning(f"Using empty string for missing cookie: {name}")
-        cookies.append(create_cookie_template(name, value, domain))
+
+        # Set appropriate expiration date based on cookie type
+        if name in ["personalization_id", "kdt"]:
+            # 1 month expiration for these cookies
+            expires = one_month_future
+            logger.info(f"Setting {name} cookie to expire in 1 month: {expires}")
+        elif name in ["auth_token", "ct0"]:
+            # 1 week expiration for these cookies
+            expires = one_week_future
+            logger.info(f"Setting {name} cookie to expire in 1 week: {expires}")
+        else:
+            # Default 1 week for all other cookies
+            expires = one_week_future
+            logger.info(
+                f"Setting {name} cookie to default expiration (1 week): {expires}"
+            )
+
+        cookies.append(create_cookie_template(name, value, domain, expires))
+
     return cookies
-
-
-def reset_browser_state(driver):
-    """Reset the browser state to prepare for the next account."""
-    try:
-        logger.info("Resetting browser state")
-        # Clear cookies and storage
-        driver.delete_all_cookies()
-        driver.execute_script("localStorage.clear(); sessionStorage.clear();")
-        # Navigate back to login page
-        driver.get("https://twitter.com/i/flow/login")
-        time.sleep(3)  # Wait for page to load
-        return True
-    except Exception as e:
-        logger.error(f"Failed to reset browser state: {str(e)}")
-        return False
 
 
 def process_account_state_machine(driver, username, password):
@@ -651,8 +770,36 @@ def process_account_state_machine(driver, username, password):
 
     # Navigate to login page
     try:
-        driver.get("https://twitter.com/i/flow/login")
-        time.sleep(5)  # Initial wait for page load
+        driver.get(TWITTER_LOGIN_URL)
+
+        # Wait for page to load using document readyState
+        wait_start = time.time()
+        max_wait = 10  # Maximum seconds to wait
+
+        while time.time() - wait_start < max_wait:
+            # Check if document is ready
+            ready_state = driver.execute_script("return document.readyState")
+
+            # Check if login form elements are visible
+            login_elements = driver.find_elements(
+                By.CSS_SELECTOR,
+                'input[name="text"], div[role="button"], form[data-testid="LoginForm"]',
+            )
+
+            if ready_state == "complete" and any(
+                elem.is_displayed() for elem in login_elements if login_elements
+            ):
+                logger.info("Login page loaded successfully")
+                break
+
+            # Short sleep between checks
+            time.sleep(0.5)
+
+        # If we got here and timed out, log a warning but continue
+        if time.time() - wait_start >= max_wait:
+            logger.warning(
+                "Timed out waiting for login page to fully load, but continuing anyway"
+            )
     except Exception as e:
         logger.error(f"Failed to navigate to login page: {str(e)}")
         return False
@@ -865,58 +1012,6 @@ def process_account_state_machine(driver, username, password):
         return False
 
 
-def natural_mouse_movement(driver, start_element, target_element):
-    """Simulate natural mouse movement with acceleration and deceleration."""
-    actions = ActionChains(driver)
-
-    # Get element positions
-    start_rect = start_element.rect
-    end_rect = target_element.rect
-
-    start_x = start_rect["x"] + start_rect["width"] // 2
-    start_y = start_rect["y"] + start_rect["height"] // 2
-    end_x = end_rect["x"] + end_rect["width"] // 2
-    end_y = end_rect["y"] + end_rect["height"] // 2
-
-    # Calculate intermediate points with bezier curve
-    # (simplified version - could be more complex)
-    steps = random.randint(20, 40)
-    for i in range(steps + 1):
-        t = i / steps
-        # Add slight randomization to path
-        offset_x = random.randint(-5, 5)
-        offset_y = random.randint(-5, 5)
-
-        # Bezier curve formula for natural movement
-        x = start_x + (end_x - start_x) * (3 * (t**2) - 2 * (t**3)) + offset_x
-        y = start_y + (end_y - start_y) * (3 * (t**2) - 2 * (t**3)) + offset_y
-
-        # Variable speed - slower at beginning and end
-        sleep_time = 0.01
-        if i < steps * 0.2 or i > steps * 0.8:
-            sleep_time = random.uniform(0.01, 0.03)  # Slower at start/end
-
-        actions.move_by_offset(
-            x - actions.w3c_actions.pointer_action.source.pointer.x,
-            y - actions.w3c_actions.pointer_action.source.pointer.y,
-        )
-        actions.pause(sleep_time)
-
-    # Final movement to exact target with slight hover before click
-    actions.move_to_element(target_element)
-    actions.pause(random.uniform(0.1, 0.3))
-    actions.click()
-    actions.perform()
-
-
-def variable_sleep(base_time, randomize_factor=0.5):
-    """Sleep for a variable amount of time to avoid detection patterns."""
-    variation = base_time * randomize_factor
-    sleep_time = random.uniform(base_time - variation, base_time + variation)
-    time.sleep(sleep_time)
-    return sleep_time
-
-
 def main():
     """Main function to process Twitter accounts from environment variable."""
     logger.info("Starting cookie grabber")
@@ -937,6 +1032,9 @@ def main():
 
     account_pairs = twitter_accounts_str.split(",")
     logger.info(f"Found {len(account_pairs)} accounts to process")
+    logger.info(
+        "Browser reset between accounts is disabled to reduce verification challenges"
+    )
 
     # Create the output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -974,9 +1072,81 @@ def main():
                     f"Account {username} processed with {'success' if success else 'failure'}"
                 )
 
-                # Reset browser state before the next account
+                # Transition to next account gently without resetting browser state
                 if account_pair != account_pairs[-1]:  # If not the last account
-                    reset_browser_state(driver)
+                    try:
+                        # Try logging out first if possible
+                        try:
+                            # Look for logout option in account menu
+                            menu_buttons = driver.find_elements(
+                                By.CSS_SELECTOR,
+                                'div[aria-label="Account menu"], div[data-testid="AppTabBar_More_Menu"]',
+                            )
+                            for menu in menu_buttons:
+                                if menu.is_displayed():
+                                    menu.click()
+                                    logger.info("Clicked account menu")
+                                    time.sleep(1)
+                                    break
+
+                            # Now look for logout button
+                            logout_buttons = driver.find_elements(
+                                By.XPATH,
+                                "//*[contains(text(), 'Log out') or contains(text(), 'Logout')]",
+                            )
+                            if logout_buttons and any(
+                                btn.is_displayed() for btn in logout_buttons
+                            ):
+                                for btn in logout_buttons:
+                                    if btn.is_displayed():
+                                        btn.click()
+                                        logger.info("Clicked Logout button")
+                                        time.sleep(2)
+                                        # Try to confirm logout if needed
+                                        confirm_buttons = driver.find_elements(
+                                            By.XPATH,
+                                            "//*[contains(text(), 'Log out') or contains(text(), 'Logout') or contains(text(), 'Confirm')]",
+                                        )
+                                        for confirm in confirm_buttons:
+                                            if confirm.is_displayed():
+                                                confirm.click()
+                                                logger.info("Confirmed logout")
+                                                time.sleep(2)
+                                                break
+                                        break
+                        except Exception as e:
+                            logger.warning(f"Could not perform logout: {str(e)}")
+
+                        # Navigate to login page without clearing cookies
+                        driver.get(TWITTER_LOGIN_URL)
+                        logger.info(
+                            "Navigated to login page without clearing browser state"
+                        )
+
+                        # Wait for login page to load
+                        wait_start = time.time()
+                        max_wait = 10  # Maximum seconds to wait
+                        while time.time() - wait_start < max_wait:
+                            ready_state = driver.execute_script(
+                                "return document.readyState"
+                            )
+                            login_elements = driver.find_elements(
+                                By.CSS_SELECTOR,
+                                'input[name="text"], div[role="button"], form[data-testid="LoginForm"]',
+                            )
+                            if ready_state == "complete" and any(
+                                elem.is_displayed()
+                                for elem in login_elements
+                                if login_elements
+                            ):
+                                logger.info(
+                                    "Login page loaded successfully for next account"
+                                )
+                                break
+                            time.sleep(0.5)
+                    except Exception as e:
+                        logger.warning(f"Error during account transition: {str(e)}")
+
                     cool_down = random.uniform(2, 5)  # 2-5 seconds cooldown
                     logger.info(
                         f"Cooling down for {cool_down:.1f} seconds before next account"
