@@ -8,20 +8,19 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 import random
 from selenium_stealth import stealth
 import undetected_chromedriver as uc
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
 
 # Setup logging first
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-    ],
+    handlers=[logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
@@ -43,23 +42,10 @@ COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 # Twitter domains to handle
 TWITTER_DOMAINS = ["twitter.com", "x.com"]
 
-# Constants for manual intervention
-POLLING_INTERVAL = 5  # seconds between home page checks during manual intervention
-MAX_WAITING_TIME = 600  # maximum seconds to wait for manual intervention (10 minutes)
-
-
-def take_screenshot(driver, name):
-    """Take a screenshot for debugging purposes."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{OUTPUT_DIR}/{timestamp}_{name}.png"
-    try:
-        driver.save_screenshot(filename)
-        logger.info(f"Screenshot saved: {filename}")
-        return filename
-    except Exception as e:
-        logger.error(f"Failed to take screenshot {name}: {str(e)}")
-        return None
+# Constants
+POLLING_INTERVAL = 1  # Check every 1 second
+WAITING_TIME = 3600  # Wait up to 1 hour for manual verification
+CLICK_WAIT = 5  # Wait 5 seconds after clicking buttons
 
 
 def create_cookie_template(name, value, domain="twitter.com"):
@@ -86,23 +72,6 @@ def create_cookie_template(name, value, domain="twitter.com"):
         "Raw": "",
         "Unparsed": None,
     }
-
-
-def get_chrome_data_path():
-    """Get the default Chrome user data directory based on OS"""
-    import platform
-
-    system = platform.system()
-    if system == "Darwin":  # macOS
-        return (
-            f"/Users/{os.environ.get('USER')}/Library/Application Support/Google/Chrome"
-        )
-    elif system == "Windows":
-        return f"C:/Users/{os.environ.get('USERNAME')}/AppData/Local/Google/Chrome/User Data"
-    elif system == "Linux":
-        return f"/home/{os.environ.get('USER')}/.config/google-chrome"
-    else:
-        return None
 
 
 def setup_driver():
@@ -188,295 +157,195 @@ def human_like_typing(element, text):
         time.sleep(random.uniform(0.05, 0.25))  # Random delay between keypresses
 
 
-def login_to_twitter(driver, username, password):
-    """Login to Twitter with manual intervention capability for authentication challenges."""
-    try:
-        # Navigate to Twitter login page
-        logger.info(f"Navigating to Twitter login page for account: {username}")
-        driver.get("https://twitter.com/i/flow/login")
+def add_manual_action_notice(driver, message="MANUAL ACTION REQUIRED"):
+    """Add a visual notification for manual action."""
+    # Disabled as requested
+    pass
 
-        # Random initial wait (4-7 seconds) to mimic human page load observation
-        load_wait = random.uniform(4, 7)
-        time.sleep(load_wait)
 
-        logger.info("Current URL: " + driver.current_url)
-        logger.info("Page title: " + driver.title)
+def remove_manual_action_notice(driver):
+    """Remove the manual action notice."""
+    # Disabled as requested
+    pass
 
-        # Simulate some random mouse movements before interacting with the page
-        try:
-            # Move to random positions on the page
-            action = ActionChains(driver)
-            for _ in range(3):  # Make 3 random movements
-                x = random.randint(100, 700)
-                y = random.randint(100, 500)
-                action.move_by_offset(x, y).perform()
-                time.sleep(random.uniform(0.5, 1.5))
-                # Reset position to (0,0) to avoid moving off-screen
-                action.move_by_offset(-x, -y).perform()
-        except Exception as e:
-            logger.warning(f"Mouse movement simulation failed: {str(e)}")
 
-        # Find and enter username
-        username_input = None
-        selectors = [
+def find_and_fill_input(driver, input_type, value):
+    """Find and fill an input field of a specific type."""
+    selectors = {
+        "username": [
             'input[autocomplete="username"]',
             'input[name="text"]',
-            'input[type="text"]',
-        ]
+            'input[name="username"]',
+            'input[placeholder*="username" i]',
+            'input[placeholder*="phone" i]',
+            'input[placeholder*="email" i]',
+        ],
+        "password": [
+            'input[type="password"]',
+            'input[name="password"]',
+            'input[placeholder*="password" i]',
+        ],
+        "email": [
+            'input[type="email"]',
+            'input[name="email"]',
+            'input[placeholder*="email" i]',
+            'input[autocomplete="email"]',
+        ],
+        "phone": [
+            'input[type="tel"]',
+            'input[name="phone"]',
+            'input[placeholder*="phone" i]',
+            'input[autocomplete="tel"]',
+        ],
+        "code": [
+            'input[autocomplete="one-time-code"]',
+            'input[name="code"]',
+            'input[placeholder*="code" i]',
+            'input[placeholder*="verification" i]',
+        ],
+    }
 
-        logger.info("Trying to find username input field")
-        for selector in selectors:
-            try:
-                logger.info(f"Trying selector: {selector}")
-                username_input = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                if username_input.is_displayed():
-                    logger.info(f"Found username input with selector: {selector}")
-                    break
-            except Exception as e:
-                logger.warning(f"Selector {selector} failed: {str(e)}")
-                continue
+    if input_type not in selectors:
+        logger.warning(f"Unknown input type: {input_type}")
+        return False
 
-        if not username_input:
-            logger.error("Could not find username input field")
-            return False
+    input_found = False
 
-        # Enter username
-        logger.info(f"Entering username: {username}")
-        human_like_typing(username_input, username)
-        # Pause after typing (like a human would)
-        time.sleep(random.uniform(0.8, 1.5))
-
-        # Click next button - try different approaches
-        logger.info("Attempting to click Next button")
+    for selector in selectors[input_type]:
         try:
-            # First try by text content
-            logger.info("Looking for Next button by text content")
-            next_buttons = driver.find_elements(
-                By.XPATH, '//*[contains(text(), "Next") or contains(text(), "next")]'
+            inputs = driver.find_elements(By.CSS_SELECTOR, selector)
+            for input_field in inputs:
+                if input_field.is_displayed():
+                    # Clear the field first (sometimes needed)
+                    try:
+                        input_field.clear()
+                    except:
+                        pass
+
+                    # Type the value
+                    human_like_typing(input_field, value)
+                    logger.info(f"Filled {input_type} field with value: {value}")
+
+                    # Add a small delay after typing
+                    time.sleep(random.uniform(0.5, 1.5))
+                    input_found = True
+                    return True
+        except Exception as e:
+            logger.debug(
+                f"Couldn't find or fill {input_type} field with selector {selector}: {str(e)}"
             )
 
-            if next_buttons:
-                logger.info(f"Found {len(next_buttons)} potential Next buttons by text")
-            else:
-                logger.info("No Next buttons found by text, trying by role")
-                # Try visible buttons
-                next_buttons = driver.find_elements(
-                    By.CSS_SELECTOR, 'div[role="button"]'
-                )
-                logger.info(f"Found {len(next_buttons)} potential Next buttons by role")
+    if not input_found:
+        logger.info(f"No {input_type} input field found")
 
-            # Click the first visible button
-            clicked = False
-            for i, button in enumerate(next_buttons):
-                if button.is_displayed():
-                    logger.info(f"Clicking button #{i+1}")
-                    # Move mouse to the button first (more human-like)
-                    try:
-                        ActionChains(driver).move_to_element(button).pause(
-                            random.uniform(0.3, 0.7)
-                        ).perform()
-                    except Exception as e:
-                        logger.warning(f"Failed to move mouse to button: {str(e)}")
-                    button.click()
-                    clicked = True
-                    break
+    return False
 
-            if not clicked:
-                logger.info("No visible Next button found, trying Enter key")
-                # Try pressing Enter on username field as fallback
-                username_input.send_keys("\n")
-        except Exception as e:
-            logger.error(f"Error clicking Next button: {str(e)}")
 
-        # Wait for password field
-        logger.info("Waiting for password field")
-        time.sleep(3)
+def click_next_button(driver):
+    """Try to click a 'Next' or submit button."""
+    button_clicked = False
 
-        # Find password field
-        password_input = None
-        password_selectors = ['input[type="password"]', 'input[name="password"]']
+    # Try buttons with "Next" text
+    try:
+        next_buttons = driver.find_elements(
+            By.XPATH, '//*[contains(text(), "Next") or contains(text(), "next")]'
+        )
+        for button in next_buttons:
+            if button.is_displayed():
+                button.click()
+                logger.info("Clicked Next button by text")
+                button_clicked = True
+                break
+    except Exception as e:
+        logger.debug(f"Couldn't click Next button by text: {str(e)}")
 
-        logger.info("Trying to find password input field")
-        for selector in password_selectors:
-            try:
-                logger.info(f"Trying selector: {selector}")
-                password_input = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                if password_input.is_displayed():
-                    logger.info(f"Found password input with selector: {selector}")
-                    break
-            except Exception as e:
-                logger.warning(f"Selector {selector} failed: {str(e)}")
-                continue
-
-        if not password_input:
-            logger.error("Could not find password input field")
-            return False
-
-        # Enter password
-        logger.info("Entering password")
-        human_like_typing(password_input, password)
-        # Pause after typing (like a human would)
-        time.sleep(random.uniform(0.8, 1.5))
-
-        # Sometimes humans pause/think before clicking login
-        time.sleep(random.uniform(1, 3))
-
-        # Click login button - try different approaches
-        logger.info("Attempting to click Login button")
+    # Try buttons with "Continue" text
+    if not button_clicked:
         try:
-            # First try by text content
-            logger.info("Looking for Login button by text content")
+            continue_buttons = driver.find_elements(
+                By.XPATH,
+                '//*[contains(text(), "Continue") or contains(text(), "continue")]',
+            )
+            for button in continue_buttons:
+                if button.is_displayed():
+                    button.click()
+                    logger.info("Clicked Continue button by text")
+                    button_clicked = True
+                    break
+        except Exception as e:
+            logger.debug(f"Couldn't click Continue button by text: {str(e)}")
+
+    # Try buttons with "Log in" or "Sign in" text
+    if not button_clicked:
+        try:
             login_buttons = driver.find_elements(
                 By.XPATH,
                 '//*[contains(text(), "Log in") or contains(text(), "Login") or contains(text(), "Sign in")]',
             )
-
-            if login_buttons:
-                logger.info(
-                    f"Found {len(login_buttons)} potential Login buttons by text"
-                )
-            else:
-                logger.info("No Login buttons found by text, trying by role")
-                # Try visible buttons
-                login_buttons = driver.find_elements(
-                    By.CSS_SELECTOR, 'div[role="button"]'
-                )
-                logger.info(
-                    f"Found {len(login_buttons)} potential Login buttons by role"
-                )
-
-            # Click the first visible button
-            clicked = False
-            for i, button in enumerate(login_buttons):
+            for button in login_buttons:
                 if button.is_displayed():
-                    logger.info(f"Clicking button #{i+1}")
-                    # Move mouse to the button first (more human-like)
-                    try:
-                        ActionChains(driver).move_to_element(button).pause(
-                            random.uniform(0.3, 0.7)
-                        ).perform()
-                    except Exception as e:
-                        logger.warning(f"Failed to move mouse to button: {str(e)}")
                     button.click()
-                    clicked = True
+                    logger.info("Clicked Login button by text")
+                    button_clicked = True
                     break
-
-            if not clicked:
-                logger.info("No visible Login button found, trying Enter key")
-                # Try pressing Enter on password field as fallback
-                password_input.send_keys("\n")
         except Exception as e:
-            logger.error(f"Error clicking Login button: {str(e)}")
+            logger.debug(f"Couldn't click Login button by text: {str(e)}")
 
-        # Wait and check for authentication challenges
-        logger.info("Checking for authentication challenges or successful login")
-        wait_start_time = time.time()
+    # Try generic button elements by role
+    if not button_clicked:
+        try:
+            buttons = driver.find_elements(By.CSS_SELECTOR, 'div[role="button"]')
+            for button in buttons:
+                if button.is_displayed():
+                    button.click()
+                    logger.info("Clicked button by role")
+                    button_clicked = True
+                    break
+        except Exception as e:
+            logger.debug(f"Couldn't click button by role: {str(e)}")
 
-        while time.time() - wait_start_time < 15:  # Initial check timeout (15 seconds)
-            current_url = driver.current_url
+    # Try submitting the form with Enter key (last resort)
+    if not button_clicked:
+        try:
+            active_element = driver.switch_to.active_element
+            active_element.send_keys(Keys.ENTER)
+            logger.info("Pressed Enter key on active element")
+            button_clicked = True
+        except Exception as e:
+            logger.debug(f"Couldn't press Enter key: {str(e)}")
 
-            # Check if we're already on the home page (immediate success)
-            if "twitter.com/home" in current_url or "x.com/home" in current_url:
-                logger.info("Successfully logged in - reached home page")
-                return True
-
-            # Check for authentication challenge elements
-            auth_elements = driver.find_elements(
-                By.XPATH,
-                '//*[contains(text(), "Authenticate") or contains(text(), "Verify") or contains(text(), "Challenge") or contains(text(), "Confirm your identity") or contains(text(), "Unusual login") or contains(text(), "CAPTCHA")]',
-            )
-
-            if auth_elements:
-                logger.warning(f"Authentication challenge detected for {username}")
-                return handle_manual_intervention(driver, username)
-
-            time.sleep(1)
-
-        # After initial timeout, check if we need manual intervention
-        if "verify" in driver.current_url or "challenge" in driver.current_url:
-            logger.warning(
-                "Verification or challenge detected that requires manual action"
-            )
-            return handle_manual_intervention(driver, username)
-
-        # Final check for successful login
-        if is_logged_in(driver):
-            logger.info("Successfully logged in")
-            return True
-        else:
-            logger.error("Login process failed - not logged in after attempts")
-            return False
-
-    except Exception as e:
-        logger.error(f"Error during login process: {str(e)}")
-        return False
-
-
-def handle_manual_intervention(driver, username):
-    """Handle manual intervention for authentication challenges"""
-    logger.info("=" * 80)
-    logger.info(f"MANUAL INTERVENTION REQUIRED for account: {username}")
-    logger.info(
-        "Please solve the CAPTCHA or Cloudflare challenge in the browser window"
-    )
-    logger.info(
-        "If Cloudflare keeps resetting, try refreshing the page or waiting longer"
-    )
-    logger.info("=" * 80)
-
-    wait_start_time = time.time()
-
-    # Poll for successful login
-    while time.time() - wait_start_time < MAX_WAITING_TIME:
-        if is_logged_in(driver):
-            logger.info("=" * 80)
-            logger.info("Manual authentication successful - proceeding with automation")
-            logger.info("=" * 80)
-            return True
-
-        # Show ongoing notification every 30 seconds
-        elapsed = time.time() - wait_start_time
-        if int(elapsed) % 30 == 0:
-            logger.info(
-                f"Still waiting for manual intervention ({int(elapsed)} seconds elapsed)..."
-            )
-
-        time.sleep(POLLING_INTERVAL)
-
-    logger.error("=" * 80)
-    logger.error(f"Maximum waiting time ({MAX_WAITING_TIME} seconds) exceeded")
-    logger.error("Manual intervention unsuccessful - skipping this account")
-    logger.error("=" * 80)
-    return False
+    return button_clicked
 
 
 def is_logged_in(driver):
-    """Check if user is logged in by looking for home page elements"""
+    """Check if user is logged in to Twitter."""
     try:
-        # Check URL
         current_url = driver.current_url.lower()
+
+        # URL check (most reliable)
         if "twitter.com/home" in current_url or "x.com/home" in current_url:
             return True
 
-        # Check for profile elements that indicate logged-in state
-        profile_elements = driver.find_elements(
-            By.CSS_SELECTOR, 'a[aria-label="Profile"]'
+        # Home timeline check
+        home_timeline = driver.find_elements(
+            By.CSS_SELECTOR, 'div[aria-label="Timeline: Your Home Timeline"]'
         )
-        if profile_elements and any(elem.is_displayed() for elem in profile_elements):
+        if home_timeline and any(elem.is_displayed() for elem in home_timeline):
             return True
 
-        app_tab_elements = driver.find_elements(
-            By.CSS_SELECTOR, 'a[data-testid="AppTabBar_Profile_Link"]'
+        # Tweet/Post button check
+        tweet_buttons = driver.find_elements(
+            By.CSS_SELECTOR,
+            'a[data-testid="SideNav_NewTweet_Button"], [data-testid="tweetButtonInline"]',
         )
-        if app_tab_elements and any(elem.is_displayed() for elem in app_tab_elements):
+        if tweet_buttons and any(btn.is_displayed() for btn in tweet_buttons):
             return True
 
-        # Check for navigation elements typically present when logged in
-        nav_elements = driver.find_elements(By.CSS_SELECTOR, 'nav[role="navigation"]')
+        # Navigation elements check
+        nav_elements = driver.find_elements(
+            By.CSS_SELECTOR,
+            'nav[role="navigation"], a[data-testid="AppTabBar_Home_Link"]',
+        )
         if nav_elements and any(elem.is_displayed() for elem in nav_elements):
             return True
 
@@ -486,134 +355,69 @@ def is_logged_in(driver):
         return False
 
 
-def logout_from_twitter(driver):
-    """Logout from Twitter."""
+def needs_verification(driver):
+    """Check if the page is showing a verification or authentication screen."""
     try:
-        logger.info("Logging out from Twitter")
+        # Check for verification text
+        verification_texts = [
+            "Authenticate your account",
+            "Enter your phone number",
+            "Enter your email",
+            "Check your phone",
+            "Check your email",
+            "Verification code",
+            "verify your identity",
+            "unusual login activity",
+            "suspicious activity",
+            "Help us keep your account safe",
+            "Verify your identity",
+            "keep your account safe",
+        ]
 
-        # Try to navigate to home to ensure we're on Twitter
-        driver.get("https://twitter.com/home")
-        time.sleep(3)
-
-        # Click on the account menu
-        try:
-            # Try to find the account menu by different methods
-            menu_selectors = [
-                'a[data-testid="AppTabBar_Profile_Link"]',
-                'a[aria-label="Profile"]',
-                'div[data-testid="SideNav_AccountSwitcher_Button"]',
-            ]
-
-            menu_element = None
-            for selector in menu_selectors:
-                try:
-                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                    for elem in elements:
-                        if elem.is_displayed():
-                            menu_element = elem
-                            break
-                    if menu_element:
-                        break
-                except:
-                    continue
-
-            if menu_element:
-                logger.info("Found account menu, clicking it")
-                menu_element.click()
-                time.sleep(2)
-
-                # Look for logout button
-                logout_selectors = [
-                    'a[data-testid="logout"]',
-                    'div[data-testid="logout"]',
-                    'div[role="menuitem"]:last-child',
-                    'a[href="/logout"]',
-                ]
-
-                logout_element = None
-                for selector in logout_selectors:
-                    try:
-                        elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                        for elem in elements:
-                            if elem.is_displayed() and (
-                                "log out" in elem.text.lower()
-                                or "logout" in elem.text.lower()
-                            ):
-                                logout_element = elem
-                                break
-                        if logout_element:
-                            break
-                    except:
-                        continue
-
-                if logout_element:
-                    logger.info("Found logout button, clicking it")
-                    logout_element.click()
-                    time.sleep(2)
-
-                    # Confirm logout if needed
-                    confirm_buttons = driver.find_elements(
-                        By.CSS_SELECTOR, 'div[role="button"]'
-                    )
-                    for button in confirm_buttons:
-                        if button.is_displayed() and (
-                            "log out" in button.text.lower()
-                            or "logout" in button.text.lower()
-                        ):
-                            logger.info("Confirming logout")
-                            button.click()
-                            time.sleep(2)
-                            break
-
-                    # Wait until we're on the login page or a non-authenticated page
-                    try:
-                        WebDriverWait(driver, 10).until(
-                            lambda d: "login" in d.current_url
-                            or "?lang=" in d.current_url
-                        )
-                        logger.info("Successfully logged out")
-                        return True
-                    except TimeoutException:
-                        logger.warning(
-                            "Timeout waiting for logout completion, trying alternative method"
-                        )
-                else:
-                    logger.warning("Could not find logout button in menu")
-            else:
-                logger.warning("Could not find account menu")
-
-        except Exception as e:
-            logger.error(f"Error during menu navigation: {str(e)}")
-
-        # Alternative logout method - directly go to logout URL
-        logger.info("Using alternative logout method - direct URL")
-        driver.get("https://twitter.com/logout")
-        time.sleep(2)
-
-        # Look for confirm logout button
-        try:
-            buttons = driver.find_elements(By.CSS_SELECTOR, 'div[role="button"]')
-            for button in buttons:
-                if button.is_displayed() and (
-                    "log out" in button.text.lower() or "logout" in button.text.lower()
-                ):
-                    logger.info("Confirming logout")
-                    button.click()
-                    time.sleep(2)
+        for text in verification_texts:
+            try:
+                elements = driver.find_elements(
+                    By.XPATH, f"//*[contains(text(), '{text}')]"
+                )
+                if elements and any(elem.is_displayed() for elem in elements):
+                    logger.info(f"Verification needed: Found text '{text}'")
                     return True
-        except Exception as e:
-            logger.error(f"Error during alternative logout: {str(e)}")
+            except:
+                pass
 
-        # Final fallback - clear cookies and return to login page
-        logger.warning("Clearing cookies and resetting to login page")
-        driver.delete_all_cookies()
-        driver.get("https://twitter.com/i/flow/login")
-        time.sleep(2)
-        return True
+        # Check for verification URLs
+        current_url = driver.current_url.lower()
+        verification_url_patterns = [
+            "verify",
+            "challenge",
+            "confirm",
+            "auth",
+            "login_challenge",
+        ]
 
-    except Exception as e:
-        logger.error(f"Error during logout: {str(e)}")
+        for pattern in verification_url_patterns:
+            if pattern in current_url:
+                logger.info(f"Verification needed: URL contains '{pattern}'")
+                return True
+
         return False
+    except Exception as e:
+        logger.error(f"Error checking for verification: {str(e)}")
+        return False
+
+
+def extract_email_from_password(password):
+    """Extract email from password assuming format 'himynameis<name>'."""
+    try:
+        # Check if password starts with 'himynameis'
+        if password.startswith("himynameis"):
+            name = password[10:]  # Extract everything after 'himynameis'
+            return f"grantdfoster+{name}@gmail.com"
+    except:
+        pass
+
+    # Fall back to a default
+    return "grantdfoster@gmail.com"
 
 
 def extract_cookies(driver):
@@ -633,12 +437,10 @@ def extract_cookies(driver):
 
     for cookie in browser_cookies:
         if cookie["name"] in COOKIE_NAMES:
-            # Strip double quotes from cookie values to prevent HTTP header issues
             value = cookie["value"]
             if value.startswith('"') and value.endswith('"'):
                 value = value[1:-1]  # Remove surrounding quotes
-            # Replace any remaining quotes with empty string
-            value = value.replace('"', "")
+            value = value.replace('"', "")  # Replace any remaining quotes
 
             cookie_values[cookie["name"]] = value
             logger.info(f"Found cookie: {cookie['name']}")
@@ -681,8 +483,8 @@ def reset_browser_state(driver):
         return False
 
 
-def process_account(driver, username, password):
-    """Process a single Twitter account and get its cookies."""
+def process_account_state_machine(driver, username, password):
+    """Process an account using a state machine approach with continuous polling."""
     logger.info(f"==========================================")
     logger.info(f"Starting to process account: {username}")
     output_file = f"{username}_twitter_cookies.json"
@@ -690,23 +492,210 @@ def process_account(driver, username, password):
     # Create output directory if it doesn't exist
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+    # Extract email from password if needed for verification
+    email = extract_email_from_password(password)
+    logger.info(f"Using email {email} for account {username}")
+
+    # Navigate to login page
     try:
-        success = login_to_twitter(driver, username, password)
+        driver.get("https://twitter.com/i/flow/login")
+        time.sleep(5)  # Initial wait for page load
+    except Exception as e:
+        logger.error(f"Failed to navigate to login page: {str(e)}")
+        return False
 
-        if success:
-            logger.info(f"Login successful for {username}")
-            # Go to twitter.com to ensure all cookies are set
-            logger.info("Navigating to Twitter home to ensure all cookies are set")
+    # Setup state machine variables
+    start_time = time.time()
+    last_action_time = start_time
+    last_url = driver.current_url
+    login_successful = False
+    manual_intervention_active = False
 
-            # Try both domains in case one is redirected
-            current_url = driver.current_url.lower()
-            if "x.com" in current_url:
-                driver.get("https://x.com/home")
+    # State machine loop
+    while time.time() - start_time < WAITING_TIME:
+        try:
+            current_url = driver.current_url
+
+            # Check if already logged in
+            if is_logged_in(driver):
+                logger.info("Login successful!")
+                login_successful = True
+                break
+
+            # Check if URL changed since last check
+            if current_url != last_url:
+                logger.info(f"URL changed to: {current_url}")
+                last_url = current_url
+                last_action_time = time.time()  # Reset the idle timer when URL changes
+
+            # Check if we need verification
+            if needs_verification(driver):
+                if not manual_intervention_active:
+                    logger.info("Manual verification required")
+                    manual_intervention_active = True
+
+                # Try to help with the verification by filling known fields
+                # Check for phone/email verification screen
+                verification_inputs = driver.find_elements(
+                    By.CSS_SELECTOR,
+                    'input[placeholder*="Phone or email"], input[placeholder*="phone number or email"], input[aria-label*="phone"], input[aria-label*="email"], input[name="text"], input.r-30o5oe, input[placeholder*="Email address"]',
+                )
+                if verification_inputs and any(
+                    inp.is_displayed() for inp in verification_inputs
+                ):
+                    logger.info(
+                        "Phone/email verification screen detected - filling with email"
+                    )
+                    for input_field in verification_inputs:
+                        if input_field.is_displayed():
+                            try:
+                                # Clear the field completely
+                                input_field.clear()
+                                input_field.send_keys(Keys.CONTROL + "a")
+                                input_field.send_keys(Keys.DELETE)
+                                time.sleep(0.5)
+                            except:
+                                pass
+                            # Only type the email, nothing else
+                            human_like_typing(input_field, email)
+                            logger.info(
+                                f"Filled verification input with email: {email}"
+                            )
+                            time.sleep(1)
+                            click_next_button(driver)
+                            time.sleep(CLICK_WAIT)
+                            last_action_time = time.time()
+                            continue
+
+                # Check specifically for the "Help us keep your account safe" screen
+                help_safe_elements = driver.find_elements(
+                    By.XPATH, "//*[contains(text(), 'Help us keep your account safe')]"
+                )
+                if help_safe_elements and any(
+                    elem.is_displayed() for elem in help_safe_elements
+                ):
+                    logger.info("Account safety verification screen detected")
+                    # Try to find email input field
+                    email_inputs = driver.find_elements(
+                        By.CSS_SELECTOR, 'input[placeholder="Email address"]'
+                    )
+                    if email_inputs and any(inp.is_displayed() for inp in email_inputs):
+                        for input_field in email_inputs:
+                            if input_field.is_displayed():
+                                try:
+                                    # Clear the field completely
+                                    input_field.clear()
+                                    input_field.send_keys(Keys.CONTROL + "a")
+                                    input_field.send_keys(Keys.DELETE)
+                                    time.sleep(0.5)
+                                except:
+                                    pass
+                                # Type the email address
+                                human_like_typing(input_field, email)
+                                logger.info(
+                                    f"Filled account safety email with: {email}"
+                                )
+                                time.sleep(1)
+                                # Look for the Next button
+                                next_buttons = driver.find_elements(
+                                    By.XPATH,
+                                    '//div[@role="button" and contains(text(), "Next")]',
+                                )
+                                if next_buttons and any(
+                                    btn.is_displayed() for btn in next_buttons
+                                ):
+                                    for btn in next_buttons:
+                                        if btn.is_displayed():
+                                            btn.click()
+                                            logger.info(
+                                                "Clicked Next button on account safety screen"
+                                            )
+                                            time.sleep(CLICK_WAIT)
+                                            last_action_time = time.time()
+                                            break
+                                else:
+                                    # If can't find specific Next button, try generic button click
+                                    click_next_button(driver)
+                                    time.sleep(CLICK_WAIT)
+                                    last_action_time = time.time()
+                                continue
+
+                # Check for email input (older style)
+                if find_and_fill_input(driver, "email", email):
+                    click_next_button(driver)
+                    time.sleep(CLICK_WAIT)
+                    last_action_time = time.time()
+                    continue
+
+                # Check for phone input (we'll let the user handle this)
+                phone_inputs = driver.find_elements(
+                    By.CSS_SELECTOR, 'input[type="tel"], input[placeholder*="phone" i]'
+                )
+                if phone_inputs and any(inp.is_displayed() for inp in phone_inputs):
+                    logger.info(
+                        "Phone verification required - waiting for manual completion"
+                    )
+                    # Just continue polling, user needs to complete this manually
+                    time.sleep(POLLING_INTERVAL)
+                    continue
             else:
-                driver.get("https://twitter.com/home")
+                # If we no longer need verification, update the flag
+                if manual_intervention_active:
+                    logger.info("Manual verification appears to be completed")
+                    manual_intervention_active = False
 
-            time.sleep(3)  # Wait for cookies to be fully set
+            # Normal login flow - try to identify and fill inputs
+            # Username field
+            if find_and_fill_input(driver, "username", username):
+                click_next_button(driver)
+                time.sleep(CLICK_WAIT)
+                last_action_time = time.time()
+                continue
 
+            # Password field
+            if find_and_fill_input(driver, "password", password):
+                click_next_button(driver)
+                time.sleep(CLICK_WAIT)
+                last_action_time = time.time()
+                continue
+
+            # If we haven't taken any action for a while, try clicking a button
+            if time.time() - last_action_time > 30:  # 30 seconds of no action
+                if click_next_button(driver):
+                    logger.info("Clicked a button after 30 seconds of inactivity")
+                    time.sleep(CLICK_WAIT)
+                    last_action_time = time.time()
+                    continue
+
+            # If we're not logged in and can't find any inputs, wait
+            time.sleep(POLLING_INTERVAL)
+
+        except WebDriverException as e:
+            if "no such window" in str(e).lower():
+                logger.error("Browser window was closed")
+                return False
+            logger.error(f"WebDriver error: {str(e)}")
+            # Continue the loop to try again
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            # Continue the loop to try again
+
+    # After the loop, check if login was successful
+    if login_successful:
+        try:
+            # Ensure we're on the home page
+            if "home" not in driver.current_url.lower():
+                logger.info("Navigating to home page to ensure all cookies are set")
+                try:
+                    if "x.com" in driver.current_url:
+                        driver.get("https://x.com/home")
+                    else:
+                        driver.get("https://twitter.com/home")
+                    time.sleep(3)
+                except Exception as e:
+                    logger.warning(f"Failed to navigate to home page: {str(e)}")
+
+            # Extract and save cookies
             cookie_values, domain = extract_cookies(driver)
             cookies_json = generate_cookies_json(cookie_values, domain)
 
@@ -716,15 +705,13 @@ def process_account(driver, username, password):
                 f.write(json.dumps(cookies_json, indent=2))
             logger.info(f"Saved cookies for {username} to {output_path}")
 
-            # Logout after extracting cookies
-            logout_from_twitter(driver)
-        else:
-            logger.error(f"Failed to login for {username}")
-    except Exception as e:
-        logger.error(f"Unexpected error processing account {username}: {str(e)}")
-    finally:
-        logger.info(f"Finished processing account: {username}")
-        logger.info(f"==========================================")
+            return True
+        except Exception as e:
+            logger.error(f"Error after successful login: {str(e)}")
+            return False
+    else:
+        logger.error(f"Failed to login for {username} within the time limit")
+        return False
 
 
 def main():
@@ -773,14 +760,15 @@ def main():
                 username = username.strip()
                 password = password.strip()
 
-                process_account(driver, username, password)
+                success = process_account_state_machine(driver, username, password)
+                logger.info(
+                    f"Account {username} processed with {'success' if success else 'failure'}"
+                )
 
                 # Reset browser state before the next account
                 if account_pair != account_pairs[-1]:  # If not the last account
                     reset_browser_state(driver)
-
-                    # Add a short cooling period between accounts
-                    cool_down = random.uniform(1, 2)  # 1-2 seconds
+                    cool_down = random.uniform(2, 5)  # 2-5 seconds cooldown
                     logger.info(
                         f"Cooling down for {cool_down:.1f} seconds before next account"
                     )
