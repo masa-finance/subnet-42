@@ -15,6 +15,8 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
+import shutil
+from pathlib import Path
 
 # Setup logging first
 logging.basicConfig(
@@ -39,8 +41,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Twitter cookie names to extract
 COOKIE_NAMES = ["personalization_id", "kdt", "twid", "ct0", "auth_token", "att"]
 
-# Twitter domains to handle
-TWITTER_DOMAINS = ["twitter.com", "x.com"]
+# Twitter domains to handle - We will only use twitter.com
+TWITTER_DOMAINS = ["twitter.com"]
 
 # Constants
 POLLING_INTERVAL = 1  # Check every 1 second
@@ -72,6 +74,32 @@ def create_cookie_template(name, value, domain="twitter.com"):
         "Raw": "",
         "Unparsed": None,
     }
+
+
+def setup_realistic_profile(temp_profile):
+    """Set up a more realistic browser profile with history and common extensions."""
+
+    # Create history file structure
+    history_dir = os.path.join(temp_profile, "Default")
+    os.makedirs(history_dir, exist_ok=True)
+
+    # Sample visited sites for history (just structure, not actual data)
+    common_sites = [
+        "google.com",
+        "youtube.com",
+        "facebook.com",
+        "amazon.com",
+        "wikipedia.org",
+    ]
+
+    # Add a dummy extension folder to simulate common extensions
+    ext_dir = os.path.join(temp_profile, "Default", "Extensions")
+    os.makedirs(ext_dir, exist_ok=True)
+
+    # Copy a safe, common extension if available (optional)
+    # e.g., uBlock Origin, etc.
+
+    return temp_profile
 
 
 def setup_driver():
@@ -114,6 +142,24 @@ def setup_driver():
     user_agent = random.choice(user_agents)
     options.add_argument(f"--user-agent={user_agent}")
 
+    # CDP detection evasion
+    options.add_argument("--remote-debugging-port=0")
+    options.add_argument("--remote-allow-origins=*")
+
+    # Set up more realistic browser profile
+    temp_profile = setup_realistic_profile(temp_profile)
+
+    # Add proxy support if provided
+    if os.environ.get("USE_PROXY") == "true":
+        proxy = os.environ.get("PROXY_SERVER")
+        if proxy:
+            logger.info(f"Using proxy: {proxy}")
+            options.add_argument(f"--proxy-server={proxy}")
+
+    # Add headers to appear more like a genuine browser
+    options.add_argument("--accept-lang=en-US,en;q=0.9")
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+
     try:
         logger.info("Initializing Chrome driver...")
         driver = webdriver.Chrome(options=options)
@@ -124,7 +170,7 @@ def setup_driver():
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
 
-        # Apply stealth settings
+        # Apply more comprehensive stealth settings
         stealth(
             driver,
             languages=["en-US", "en"],
@@ -133,6 +179,106 @@ def setup_driver():
             webgl_vendor="Intel Inc.",
             renderer="Intel Iris OpenGL Engine",
             fix_hairline=True,
+            # New parameters
+            hardware_concurrency=4,  # Spoof CPU core count
+            media_codecs=True,  # Mask media codec capabilities
+            audio_context=True,  # Prevent audio fingerprinting
+            fonts_languages=["en-US"],  # Standardize font rendering
+        )
+
+        # Timezone and geolocation spoofing
+        driver.execute_script(
+            """
+          const fakeTime = new Date('2023-01-01T12:00:00');
+          const dateNowStub = () => fakeTime.getTime();
+          const realDateNow = Date.now;
+          Date.now = dateNowStub;
+          const timeStub = () => 12 * 60 * 60 * 1000;
+          const realPerformanceNow = performance.now;
+          performance.now = timeStub;
+        """
+        )
+
+        # Spoof geolocation API
+        driver.execute_script(
+            """
+          navigator.geolocation.getCurrentPosition = function(success) {
+            success({
+              coords: {
+                latitude: 37.7749,
+                longitude: -122.4194,
+                accuracy: 100,
+                altitude: null,
+                altitudeAccuracy: null,
+                heading: null,
+                speed: null
+              },
+              timestamp: Date.now()
+            });
+          };
+        """
+        )
+
+        # More comprehensive anti-detection script
+        driver.execute_script(
+            """
+        // Overwrite navigator properties that reveal automation
+        const overrideNavigator = () => {
+          Object.defineProperty(navigator, 'maxTouchPoints', {
+            get: () => 5
+          });
+          
+          Object.defineProperty(navigator, 'hardwareConcurrency', {
+            get: () => 8
+          });
+          
+          Object.defineProperty(navigator, 'deviceMemory', {
+            get: () => 8
+          });
+          
+          // Override connection type
+          if (navigator.connection) {
+            Object.defineProperty(navigator.connection, 'type', {
+              get: () => 'wifi'
+            });
+          }
+          
+          // Override webRTC
+          if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+            navigator.mediaDevices.enumerateDevices = () => Promise.resolve([
+              {deviceId: 'default', kind: 'audioinput', label: '', groupId: 'default'},
+              {deviceId: 'default', kind: 'audiooutput', label: '', groupId: 'default'},
+              {deviceId: 'default', kind: 'videoinput', label: '', groupId: 'default'}
+            ]);
+          }
+        };
+
+        // Canvas fingerprint protection
+        const overrideCanvas = () => {
+          const oldGetContext = HTMLCanvasElement.prototype.getContext;
+          HTMLCanvasElement.prototype.getContext = function(type, attributes) {
+            const context = oldGetContext.apply(this, arguments);
+            if (type === '2d') {
+              const oldFillText = context.fillText;
+              context.fillText = function() {
+                arguments[0] = arguments[0].toString();
+                return oldFillText.apply(this, arguments);
+              };
+              const oldMeasureText = context.measureText;
+              context.measureText = function() {
+                arguments[0] = arguments[0].toString();
+                const result = oldMeasureText.apply(this, arguments);
+                result.width += Math.random() * 0.0001;
+                return result;
+              };
+            }
+            return context;
+          };
+        };
+
+        overrideNavigator();
+        overrideCanvas();
+        """
         )
 
         return driver
@@ -438,13 +584,7 @@ def extract_cookies(driver):
     logger.info(f"Found {len(browser_cookies)} cookies total")
 
     cookie_values = {}
-    used_domain = "twitter.com"  # Default domain
-
-    # Check which domain we're on
-    current_url = driver.current_url.lower()
-    if "x.com" in current_url:
-        used_domain = "x.com"
-        logger.info(f"Detected x.com domain in use")
+    used_domain = "twitter.com"  # Always use twitter.com domain, no conditional check
 
     for cookie in browser_cookies:
         if cookie["name"] in COOKIE_NAMES:
@@ -468,6 +608,8 @@ def extract_cookies(driver):
 
 def generate_cookies_json(cookie_values, domain="twitter.com"):
     """Generate the cookies JSON from the provided cookie values."""
+    # Always use twitter.com domain regardless of what's passed in
+    domain = "twitter.com"
     logger.info(f"Generating cookies JSON for domain: {domain}")
     cookies = []
     for name in COOKIE_NAMES:
@@ -698,10 +840,8 @@ def process_account_state_machine(driver, username, password):
             if "home" not in driver.current_url.lower():
                 logger.info("Navigating to home page to ensure all cookies are set")
                 try:
-                    if "x.com" in driver.current_url:
-                        driver.get("https://x.com/home")
-                    else:
-                        driver.get("https://twitter.com/home")
+                    # Always navigate to twitter.com, never x.com
+                    driver.get("https://twitter.com/home")
                     time.sleep(3)
                 except Exception as e:
                     logger.warning(f"Failed to navigate to home page: {str(e)}")
@@ -723,6 +863,58 @@ def process_account_state_machine(driver, username, password):
     else:
         logger.error(f"Failed to login for {username} within the time limit")
         return False
+
+
+def natural_mouse_movement(driver, start_element, target_element):
+    """Simulate natural mouse movement with acceleration and deceleration."""
+    actions = ActionChains(driver)
+
+    # Get element positions
+    start_rect = start_element.rect
+    end_rect = target_element.rect
+
+    start_x = start_rect["x"] + start_rect["width"] // 2
+    start_y = start_rect["y"] + start_rect["height"] // 2
+    end_x = end_rect["x"] + end_rect["width"] // 2
+    end_y = end_rect["y"] + end_rect["height"] // 2
+
+    # Calculate intermediate points with bezier curve
+    # (simplified version - could be more complex)
+    steps = random.randint(20, 40)
+    for i in range(steps + 1):
+        t = i / steps
+        # Add slight randomization to path
+        offset_x = random.randint(-5, 5)
+        offset_y = random.randint(-5, 5)
+
+        # Bezier curve formula for natural movement
+        x = start_x + (end_x - start_x) * (3 * (t**2) - 2 * (t**3)) + offset_x
+        y = start_y + (end_y - start_y) * (3 * (t**2) - 2 * (t**3)) + offset_y
+
+        # Variable speed - slower at beginning and end
+        sleep_time = 0.01
+        if i < steps * 0.2 or i > steps * 0.8:
+            sleep_time = random.uniform(0.01, 0.03)  # Slower at start/end
+
+        actions.move_by_offset(
+            x - actions.w3c_actions.pointer_action.source.pointer.x,
+            y - actions.w3c_actions.pointer_action.source.pointer.y,
+        )
+        actions.pause(sleep_time)
+
+    # Final movement to exact target with slight hover before click
+    actions.move_to_element(target_element)
+    actions.pause(random.uniform(0.1, 0.3))
+    actions.click()
+    actions.perform()
+
+
+def variable_sleep(base_time, randomize_factor=0.5):
+    """Sleep for a variable amount of time to avoid detection patterns."""
+    variation = base_time * randomize_factor
+    sleep_time = random.uniform(base_time - variation, base_time + variation)
+    time.sleep(sleep_time)
+    return sleep_time
 
 
 def main():
