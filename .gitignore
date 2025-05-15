@@ -28,3 +28,5 @@ cookies/
 !.env.example
 
 key.pem
+
+*.conf
