@@ -2,6 +2,9 @@ from fiber.logging_utils import get_logger
 from interfaces.types import NodeData
 from typing import TYPE_CHECKING, Dict, Any
 from validator.telemetry import TEETelemetryClient
+import time
+import os
+import aiohttp
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -20,14 +23,60 @@ class NodeDataScorer:
         """
         self.validator = validator
         self.telemetry = []
+        self.active_stat_name = None
+        self.last_stat_name_refresh = 0
+        self.stat_name_refresh_interval = 3600  # 1 hour in seconds
+        self.api_url = os.getenv("MASA_TEE_API", "https://tee.api.masa.ai")
         logger.info("Initialized NodeDataScorer")
         # This can be replaced with a service client or API call in the future
+
+    async def fetch_active_stat_name(self):
+        """
+        Fetch the active stat name from the API.
+
+        :return: The active stat name
+        """
+        current_time = time.time()
+
+        # Return cached stat name if refresh interval hasn't passed
+        if (
+            self.active_stat_name is not None
+            and current_time - self.last_stat_name_refresh
+            < self.stat_name_refresh_interval
+        ):
+            return self.active_stat_name
+
+        logger.info("Fetching active stat name from API")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.api_url}/worker-id") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.active_stat_name = data.get("worker-id")
+                        self.last_stat_name_refresh = current_time
+                        logger.info(f"Active stat name: {self.active_stat_name}")
+                        return self.active_stat_name
+                    else:
+                        logger.error(
+                            f"Failed to fetch active stat name: HTTP {response.status}"
+                        )
+        except Exception as e:
+            logger.error(f"Error fetching active stat name: {str(e)}")
+
+        # If fetch fails but we have a cached value, use that
+        if self.active_stat_name is not None:
+            logger.warning("Using cached active stat name")
+            return self.active_stat_name
+
+        # Default to None if no stat name is available
+        return None
 
     def aggregate_telemetry_stats(
         self, telemetry_result: Dict[str, Any]
     ) -> Dict[str, int]:
         """
         Aggregate telemetry stats from multiple worker IDs.
+        Only count stats with the active stat name.
 
         :param telemetry_result: The telemetry result with stats by worker ID
         :return: A dictionary with aggregated stats
@@ -47,36 +96,32 @@ class NodeDataScorer:
 
         # Get the stats dictionary
         stats_dict = telemetry_result.get("stats", {})
+        worker_id = telemetry_result.get("worker_id", "unavailable")
 
         # Check if this is using the old format (stats directly in stats object)
         # or new format (stats inside worker IDs)
         if stats_dict and not any(isinstance(v, dict) for v in stats_dict.values()):
-            # Old format - stats directly in the stats object
+            # Old format - stats directly in the stats object (deprecated)
+            logger.debug(
+                f"Setting 0 telemetry for worker using older version {telemetry_result}"
+            )
+            logger.info(f"Worker ({worker_id}): is running old code")
             for stat_name in stats:
-                stats[stat_name] += stats_dict.get(stat_name, 0)
+                stats[stat_name] = 0
         else:
             # New format - stats inside worker IDs
-            # Aggregate stats from all worker IDs
-            for worker_stats in stats_dict.values():
-                stats["twitter_auth_errors"] += worker_stats.get(
-                    "twitter_auth_errors", 0
-                )
-                stats["twitter_errors"] += worker_stats.get("twitter_errors", 0)
-                stats["twitter_ratelimit_errors"] += worker_stats.get(
-                    "twitter_ratelimit_errors", 0
-                )
-                stats["twitter_returned_other"] += worker_stats.get(
-                    "twitter_returned_other", 0
-                )
-                stats["twitter_returned_profiles"] += worker_stats.get(
-                    "twitter_returned_profiles", 0
-                )
-                stats["twitter_returned_tweets"] += worker_stats.get(
-                    "twitter_returned_tweets", 0
-                )
-                stats["twitter_scrapes"] += worker_stats.get("twitter_scrapes", 0)
-                stats["web_errors"] += worker_stats.get("web_errors", 0)
-                stats["web_success"] += worker_stats.get("web_success", 0)
+            # Only aggregate stats from the active stat worker
+            for worker_id, worker_stats in stats_dict.items():
+                # Skip if active_stat_name is set and doesn't match this worker_id
+                if (
+                    self.active_stat_name is not None
+                    and worker_id != self.active_stat_name
+                ):
+                    continue
+
+                # Aggregate stats from this worker
+                for stat_name in stats:
+                    stats[stat_name] += worker_stats.get(stat_name, 0)
 
         return stats
 
@@ -87,6 +132,13 @@ class NodeDataScorer:
         :return: A list of NodeData objects containing node information
         """
         logger.info("Starting telemetry fetching process...")
+
+        # Fetch the active stat name
+        await self.fetch_active_stat_name()
+        logger.info(
+            f"Using active stat name: {self.active_stat_name or 'None (counting all)'}"
+        )
+
         logger.info("Syncing metagraph to get latest node information")
         self.validator.metagraph.sync_nodes()
 

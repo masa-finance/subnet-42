@@ -282,6 +282,27 @@ class RoutingTableDatabase:
             results = cursor.fetchall()
             return [address[0] for address in results]
 
+    def get_miner_addresses_by_hotkey(self, hotkey):
+        """
+        Get all miner addresses associated with a hotkey.
+
+        :param hotkey: The hotkey to search for
+        :return: A list of (uid, address, worker_id) tuples for the specified
+                 hotkey
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT uid, address, worker_id 
+                FROM miner_addresses 
+                WHERE hotkey = ?
+                """,
+                (hotkey,),
+            )
+            results = cursor.fetchall()
+            return [(row[0], row[1], row[2]) for row in results]
+
     def remove_unregistered_tee(self, address):
         """
         Remove a specific unregistered TEE by address.

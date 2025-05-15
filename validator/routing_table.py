@@ -1,3 +1,7 @@
+import os
+import aiohttp
+import asyncio
+
 from db.routing_table_database import RoutingTableDatabase
 import sqlite3
 from fiber.logging_utils import get_logger
@@ -13,12 +17,44 @@ class RoutingTable:
         """Add a new miner address to the database."""
         try:
             logger.info(
-                f"Adding miner to routing table: hotkey={hotkey}, uid={uid}, address={address}, worker_id={worker_id}"
+                f"Adding miner to routing table: hotkey={hotkey}, uid={uid}, "
+                f"address={address}, worker_id={worker_id}"
             )
+
+            # Check if there's already an entry with the exact same fields
+            existing_entries = self.db.get_miner_addresses_by_hotkey(hotkey)
+            for existing_uid, existing_address, existing_worker_id in existing_entries:
+                # Skip if identical entry already exists
+                if (
+                    existing_uid == uid
+                    and existing_address == address
+                    and existing_worker_id == worker_id
+                ):
+                    logger.debug(
+                        "Skipping add: Entry with identical fields already exists"
+                    )
+                    return
+
+                # If same hotkey and uid but different address or worker_id,
+                # remove old record
+                if existing_uid == uid and (
+                    existing_address != address or existing_worker_id != worker_id
+                ):
+                    logger.debug(
+                        "Removing old entry to update with new address or worker_id"
+                    )
+                    self.db.delete_address(hotkey, uid)
+                    break
+
+            # Add the new address
             self.db.add_address(hotkey, uid, address, worker_id)
-            logger.debug(f"Successfully added miner address to routing table")
+            logger.debug("Successfully added miner address to routing table")
         except sqlite3.Error as e:
-            logger.error(f"Failed to add address: {e}")
+            error_msg = str(e)
+            if "UNIQUE constraint failed: miner_addresses.address" in error_msg:
+                logger.debug(f"Address {address} is already registered in the system")
+            else:
+                logger.error(f"Failed to add address: {e}")
 
     def remove_miner_address(self, hotkey, uid):
         """Remove a specific miner address from the database."""
@@ -153,16 +189,49 @@ class RoutingTable:
         except sqlite3.Error as e:
             logger.error(f"Failed to clean old entries: {e}")
 
-    def add_unregistered_tee(self, address, hotkey):
+    async def add_unregistered_tee(self, address, hotkey):
         """Add an unregistered TEE to the database."""
         try:
-            logger.info(
-                f"Adding unregistered TEE: " f"address={address}, hotkey={hotkey}"
-            )
-            self.db.add_unregistered_tee(address, hotkey)
-            logger.debug("Successfully added unregistered TEE")
-        except sqlite3.Error as e:
-            logger.error(f"Failed to add unregistered TEE: {e}")
+            # Validate input
+            if not address or not hotkey:
+                logger.error("Both address and hotkey are required fields")
+                return False
+
+            # Get the API URL from environment variables
+            masa_tee_api = os.getenv("MASA_TEE_API", "")
+            if not masa_tee_api:
+                logger.error("MASA_TEE_API environment variable not set")
+                return False
+
+            # Format the API endpoint and payload
+            base_url = masa_tee_api.rstrip("/")
+            api_endpoint = f"{base_url}/register-tee-worker"
+            payload = {"address": address}
+
+            logger.info(f"Calling MASA TEE API to register TEE worker: {address}")
+
+            # Make API call directly without nested function
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_endpoint, json=payload) as response:
+                    if response.status == 200:
+                        # Process response but don't need to store it
+                        await response.json()
+                        logger.info(
+                            f"Successfully registered TEE worker with MASA API: "
+                            f"{address}"
+                        )
+                        return True
+                    else:
+                        response_text = await response.text()
+                        logger.error(
+                            f"Failed to register TEE worker with MASA API: "
+                            f"{response.status} - {response_text}"
+                        )
+                        return False
+
+        except Exception as e:
+            logger.error(f"Failed to register TEE worker: {e}")
+            return False
 
     def clean_old_unregistered_tees(self):
         """Clean unregistered TEEs older than one hour."""

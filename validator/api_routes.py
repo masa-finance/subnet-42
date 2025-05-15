@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable
 import os
 from fiber.logging_utils import get_logger
-import datetime
+from datetime import datetime
+import aiohttp
 
 logger = get_logger(__name__)
 
@@ -420,7 +421,7 @@ class ValidatorAPI:
         self, address: str = Body(...), hotkey: str = Body(...)
     ):
         """
-        Add an unregistered TEE address and associated hotkey manually.
+        Register a TEE worker with the MASA TEE API.
 
         :param address: The TEE address to register
         :param hotkey: The hotkey associated with the TEE address
@@ -434,15 +435,54 @@ class ValidatorAPI:
                     detail="Both 'address' and 'hotkey' are required fields",
                 )
 
-            # Add the unregistered TEE to the database
-            self.validator.routing_table.add_unregistered_tee(address, hotkey)
+            # Get the API URL from environment variables
+            masa_tee_api = os.getenv("MASA_TEE_API", "")
+            if not masa_tee_api:
+                logger.error("MASA_TEE_API environment variable not set")
+                return {
+                    "success": False,
+                    "error": "MASA_TEE_API environment variable not set",
+                }
 
-            return {
-                "success": True,
-                "message": f"Successfully added unregistered TEE with address: {address} and hotkey: {hotkey}",
-            }
+            # Format the API endpoint (normalize URL and append endpoint)
+            base_url = masa_tee_api.rstrip("/")
+            api_endpoint = f"{base_url}/register-tee-worker"
+
+            # Format the payload
+            payload = {"address": address}
+
+            # Make the API call
+            logger.info(f"Calling MASA TEE API to register TEE worker: {address}")
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_endpoint, json=payload) as response:
+                    if response.status == 200:
+                        response_data = await response.json()
+                        logger.info(
+                            f"Successfully registered TEE worker with MASA API: {address}"
+                        )
+                        return {
+                            "success": True,
+                            "message": f"Successfully registered TEE worker: {address}",
+                            "api_response": response_data,
+                        }
+                    else:
+                        response_text = await response.text()
+                        error_msg = (
+                            f"API call failed with status {response.status}: "
+                            f"{response_text}"
+                        )
+                        logger.error(
+                            f"Failed to register TEE worker with MASA API: "
+                            f"{response.status} - {response_text}"
+                        )
+                        return {"success": False, "error": error_msg}
+
+        except aiohttp.ClientError as e:
+            logger.error(f"API connection error: {str(e)}")
+            return {"success": False, "error": f"API connection error: {str(e)}"}
         except Exception as e:
-            logger.error(f"Failed to add unregistered TEE: {str(e)}")
+            logger.error(f"Failed to register TEE worker: {str(e)}")
             return {"success": False, "error": str(e)}
 
     async def dashboard(self):
