@@ -52,7 +52,7 @@ class NodeDataScorer:
                 async with session.get(f"{self.api_url}/worker-id") as response:
                     if response.status == 200:
                         data = await response.json()
-                        self.active_stat_name = data.get("worker-id")
+                        self.active_stat_name = data.get("worker_id")
                         self.last_stat_name_refresh = current_time
                         logger.info(f"Active stat name: {self.active_stat_name}")
                         return self.active_stat_name
@@ -111,15 +111,23 @@ class NodeDataScorer:
         else:
             # New format - stats inside worker IDs
             # Only aggregate stats from the active stat worker
-            for worker_id, worker_stats in stats_dict.items():
+            logger.info(f"Worker ({worker_id}): Has source worker id")
+
+            for source_worker_id, worker_stats in stats_dict.items():
                 # Skip if active_stat_name is set and doesn't match this worker_id
                 if (
                     self.active_stat_name is not None
-                    and worker_id != self.active_stat_name
+                    and source_worker_id != self.active_stat_name
                 ):
+                    logger.info(
+                        f"Worker ({worker_id}): Has wrong source {source_worker_id}"
+                    )
                     continue
 
                 # Aggregate stats from this worker
+                logger.info(
+                    f"Worker ({worker_id}): Has source worker id {source_worker_id} and it matches the indexer worker"
+                )
                 for stat_name in stats:
                     stats[stat_name] += worker_stats.get(stat_name, 0)
 
