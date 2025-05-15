@@ -364,7 +364,7 @@ class NodeManager:
                                         f"Telemetry failed for hotkey {hotkey} - {tee_address} - {_.ip}:{_.port}"
                                     )
                                     # Add to unregistered TEEs table for tracking
-                                    self.validator.routing_table.add_unregistered_tee(
+                                    await self.validator.routing_table.add_unregistered_tee(
                                         address=tee_address, hotkey=hotkey
                                     )
                                     logger.info(
@@ -389,7 +389,7 @@ class NodeManager:
                                         f"Skipping registration for {hotkey} at {tee_address} - No worker_id returned"
                                     )
                                     # Add to unregistered TEEs table for tracking
-                                    self.validator.routing_table.add_unregistered_tee(
+                                    await self.validator.routing_table.add_unregistered_tee(
                                         address=tee_address, hotkey=hotkey
                                     )
                                     logger.info(

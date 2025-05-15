@@ -75,7 +75,6 @@ class BackgroundTasks:
             try:
                 # Main tasks
                 await self.validator.node_manager.connect_new_nodes()
-                await self.validator.NATSPublisher.send_unregistered_tees()
                 await self.validator.NATSPublisher.send_connected_nodes()
                 self.validator.telemetry_storage.clean_old_entries(
                     TELEMETRY_EXPIRATION_HOURS

@@ -88,15 +88,12 @@ class TEETelemetryClient:
                 routing_table is not None
                 and self.result_tee_worker_address != self.tee_worker_address
             ):
-                # Get current unregistered addresses
-                unregistered_addrs = routing_table.get_all_unregistered_tee_addresses()
-
                 # Only add if not already in the unregistered list
-                if self.result_tee_worker_address not in unregistered_addrs:
+                if self.result_tee_worker_address:
                     logger.warning(
                         f"Adding failed result TEE worker to unregistered list: {self.result_tee_worker_address}"
                     )
-                    routing_table.add_unregistered_tee(
+                    await routing_table.add_unregistered_tee(
                         address=self.result_tee_worker_address,
                         hotkey="validator",  # Using "validator" as hotkey since this isn't associated with a specific miner
                     )
