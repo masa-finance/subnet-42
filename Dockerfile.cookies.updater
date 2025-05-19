@@ -40,12 +40,12 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '    exit 1' >> /app/entrypoint.sh && \
     echo 'fi' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo '# If we are running locally (on the same host as the Docker daemon)' >> /app/entrypoint.sh && \
-    echo 'if [ "$REMOTE_HOST" = "localhost" ] || [ "$REMOTE_HOST" = "127.0.0.1" ]; then' >> /app/entrypoint.sh && \
+    echo '# Check if we have any remote hosts configured' >> /app/entrypoint.sh && \
+    echo 'if [ -z "$REMOTE_HOSTS" ] || [ "$REMOTE_HOSTS" = "localhost" ] || [ "$REMOTE_HOSTS" = "127.0.0.1" ]; then' >> /app/entrypoint.sh && \
     echo '    echo "Running in local mode - directly copying to volume..."' >> /app/entrypoint.sh && \
     echo '    docker run --rm -v cookies-volume:/cookies -v /app/cookies:/source alpine sh -c "cp -r /source/* /cookies/ && chown -R 1000:1000 /cookies/"' >> /app/entrypoint.sh && \
     echo 'else' >> /app/entrypoint.sh && \
-    echo '    echo "Running in remote mode - transferring to $REMOTE_HOST..."' >> /app/entrypoint.sh && \
+    echo '    echo "Running in remote mode - transferring to $REMOTE_HOSTS..."' >> /app/entrypoint.sh && \
     echo '    # Execute the update script' >> /app/entrypoint.sh && \
     echo '    /app/update_cookies.sh' >> /app/entrypoint.sh && \
     echo 'fi' >> /app/entrypoint.sh && \
