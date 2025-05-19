@@ -169,7 +169,7 @@ services:
       - ./key.pem:/app/key.pem:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - REMOTE_HOST=${COOKIES_REMOTE_HOST:-localhost}
+      - REMOTE_HOSTS=${COOKIES_REMOTE_HOSTS:-localhost}
       - REMOTE_USER=${COOKIES_REMOTE_USER:-azureuser}
       - REMOTE_DIR=${COOKIES_REMOTE_DIR:-/tmp/cookies-upload}
       - PYTHONUNBUFFERED=1
