@@ -10,18 +10,23 @@ HOSTS=${COOKIES_REMOTE_HOSTS:-$REMOTE_HOST}
 USER=${COOKIES_REMOTE_USER:-$REMOTE_USER}
 DIR=${COOKIES_REMOTE_DIR:-$REMOTE_DIR}
 
-# Split hosts by spaces instead of commas
-for CURRENT_HOST in $HOSTS; do
-  echo "Transferring cookies from /app/cookies to $CURRENT_HOST..."
+# Split hosts by commas if multiple are provided
+IFS=',' read -ra HOST_ARRAY <<< "$HOSTS"
 
+# Process each host individually
+for CURRENT_HOST in "${HOST_ARRAY[@]}"; do
+  # Trim any whitespace
+  CURRENT_HOST=$(echo "$CURRENT_HOST" | xargs)
+  echo "Transferring cookies from /app/cookies to $CURRENT_HOST..."
+  
   # Create a temporary directory on the remote server
-  ssh -i /root/.ssh/id_rsa $USER@$CURRENT_HOST "mkdir -p $DIR"
+  ssh -o StrictHostKeyChecking=no -i /root/.ssh/id_rsa $USER@$CURRENT_HOST "mkdir -p $DIR"
 
   # Copy cookies to the remote server
-  scp -i /root/.ssh/id_rsa -r /app/cookies/* $USER@$CURRENT_HOST:$DIR/
+  scp -o StrictHostKeyChecking=no -i /root/.ssh/id_rsa -r /app/cookies/*.json $USER@$CURRENT_HOST:$DIR/
 
   # Copy cookies from temporary directory to each worker's volume
-  ssh -i /root/.ssh/id_rsa $USER@$CURRENT_HOST "
+  ssh -o StrictHostKeyChecking=no -i /root/.ssh/id_rsa $USER@$CURRENT_HOST "
     # List files to make sure they were transferred
     echo 'Files in the temporary directory:'
     ls -la $DIR/
@@ -37,9 +42,9 @@ for CURRENT_HOST in $HOSTS; do
       echo \"\$worker_volumes\" | while read volume; do
         echo \"Updating volume: \$volume\"
         docker run --rm -v \"\$volume\":/volume -v $DIR:/source --user root alpine sh -c \"
-          # Update only JSON files in the volume, don't touch other files
+          # Copy JSON files to volume
           echo 'Copying JSON files to volume...'
-          cp -v /source/*.json /volume/
+          cp -v /source/*.json /volume/ 2>/dev/null || echo 'No JSON files to copy'
           echo 'Files in the volume:'
           ls -la /volume/*.json 2>/dev/null || echo 'No JSON files found'
         \"
@@ -47,7 +52,7 @@ for CURRENT_HOST in $HOSTS; do
     fi
     
     # Clean up temporary directory
-    rm -rf $DIR
+    rm -rf $DIR || echo 'Could not remove temporary directory - you may need to clean it up manually'
   "
 
   echo "Cookies successfully updated in all miner volumes on $CURRENT_HOST!"
