@@ -42,8 +42,54 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo '# If we are running locally (on the same host as the Docker daemon)' >> /app/entrypoint.sh && \
     echo 'if [ "$REMOTE_HOST" = "localhost" ] || [ "$REMOTE_HOST" = "127.0.0.1" ]; then' >> /app/entrypoint.sh && \
-    echo '    echo "Running in local mode - directly copying to volume..."' >> /app/entrypoint.sh && \
-    echo '    docker run --rm -v cookies-volume:/cookies -v /app/cookies:/source alpine sh -c "cp -r /source/* /cookies/ && chown -R 1000:1000 /cookies/"' >> /app/entrypoint.sh && \
+    echo '    echo "Running in local mode..."' >> /app/entrypoint.sh && \
+    echo '    volume_name="cookies-volume"' >> /app/entrypoint.sh && \
+    echo '    echo "Copying cookies to volume $volume_name"' >> /app/entrypoint.sh && \
+    echo '    # Get the volume mount point within the Docker daemon' >> /app/entrypoint.sh && \
+    echo '    volume_path=$(docker volume inspect --format "{{ .Mountpoint }}" $volume_name)' >> /app/entrypoint.sh && \
+    echo '    if [ -z "$volume_path" ]; then' >> /app/entrypoint.sh && \
+    echo '        echo "Error: Could not find mount point for volume $volume_name"' >> /app/entrypoint.sh && \
+    echo '        exit 1' >> /app/entrypoint.sh && \
+    echo '    fi' >> /app/entrypoint.sh && \
+    echo '    echo "Volume path: $volume_path"' >> /app/entrypoint.sh && \
+    echo '    # Copy the cookies directly to the volume location' >> /app/entrypoint.sh && \
+    echo '    # Note: This assumes Docker is running in privileged mode or has access to volume paths' >> /app/entrypoint.sh && \
+    echo '    echo "Finding compatible container to help with copy..."' >> /app/entrypoint.sh && \
+    echo '    # Find another container that already has the volume mounted' >> /app/entrypoint.sh && \
+    echo '    container_id=$(docker ps -q --filter volume=$volume_name | head -n 1)' >> /app/entrypoint.sh && \
+    echo '    if [ -n "$container_id" ]; then' >> /app/entrypoint.sh && \
+    echo '        echo "Found container $container_id with volume $volume_name"' >> /app/entrypoint.sh && \
+    echo '        # Get the mount point inside the container' >> /app/entrypoint.sh && \
+    echo '        container_mount=$(docker inspect --format "{{ range .Mounts }}{{ if eq .Name \"$volume_name\" }}{{ .Destination }}{{ end }}{{ end }}" $container_id)' >> /app/entrypoint.sh && \
+    echo '        echo "Container mount point: $container_mount"' >> /app/entrypoint.sh && \
+    echo '        # Copy files via the container' >> /app/entrypoint.sh && \
+    echo '        for file in /app/cookies/*; do' >> /app/entrypoint.sh && \
+    echo '            if [ -f "$file" ]; then' >> /app/entrypoint.sh && \
+    echo '                filename=$(basename "$file")' >> /app/entrypoint.sh && \
+    echo '                echo "Copying $filename..."' >> /app/entrypoint.sh && \
+    echo '                cat "$file" | docker exec -i $container_id sh -c "cat > $container_mount/$filename"' >> /app/entrypoint.sh && \
+    echo '                docker exec $container_id chown 1000:1000 "$container_mount/$filename"' >> /app/entrypoint.sh && \
+    echo '            fi' >> /app/entrypoint.sh && \
+    echo '        done' >> /app/entrypoint.sh && \
+    echo '        echo "Cookies copied successfully via container $container_id"' >> /app/entrypoint.sh && \
+    echo '    else' >> /app/entrypoint.sh && \
+    echo '        echo "No containers with this volume found. Will try direct volume copying instead."' >> /app/entrypoint.sh && \
+    echo '        # Try to copy files directly to the volume (this may fail depending on Docker configuration)' >> /app/entrypoint.sh && \
+    echo '        # Create a small temporary container for copying' >> /app/entrypoint.sh && \
+    echo '        docker run --rm -v $volume_name:/volume alpine sh -c "ls -la /volume"' >> /app/entrypoint.sh && \
+    echo '        docker run --rm -v $volume_name:/volume alpine sh -c "mkdir -p /volume/test && echo test > /volume/test/test.txt"' >> /app/entrypoint.sh && \
+    echo '        echo "Created test file. Attempting actual copy..."' >> /app/entrypoint.sh && \
+    echo '        docker run --rm -v $volume_name:/volume alpine ls -la /volume' >> /app/entrypoint.sh && \
+    echo '        # Note: We are avoiding the direct path mount that was causing issues' >> /app/entrypoint.sh && \
+    echo '        for file in /app/cookies/*; do' >> /app/entrypoint.sh && \
+    echo '            if [ -f "$file" ]; then' >> /app/entrypoint.sh && \
+    echo '                filename=$(basename "$file")' >> /app/entrypoint.sh && \
+    echo '                echo "Copying $filename..."' >> /app/entrypoint.sh && \
+    echo '                cat "$file" | docker run --rm -i -v $volume_name:/volume alpine sh -c "cat > /volume/$filename && chmod 644 /volume/$filename && chown 1000:1000 /volume/$filename"' >> /app/entrypoint.sh && \
+    echo '            fi' >> /app/entrypoint.sh && \
+    echo '        done' >> /app/entrypoint.sh && \
+    echo '        echo "Files copied to volume $volume_name"' >> /app/entrypoint.sh && \
+    echo '    fi' >> /app/entrypoint.sh && \
     echo 'else' >> /app/entrypoint.sh && \
     echo '    echo "Running in remote mode - transferring to $REMOTE_HOST..."' >> /app/entrypoint.sh && \
     echo '    # Execute the update script' >> /app/entrypoint.sh && \
