@@ -10,10 +10,8 @@ HOSTS=${COOKIES_REMOTE_HOSTS:-$REMOTE_HOST}
 USER=${COOKIES_REMOTE_USER:-$REMOTE_USER}
 DIR=${COOKIES_REMOTE_DIR:-$REMOTE_DIR}
 
-# Split hosts by comma if multiple are provided
-IFS=',' read -ra HOST_ARRAY <<< "$HOSTS"
-
-for CURRENT_HOST in "${HOST_ARRAY[@]}"; do
+# Split hosts by spaces instead of commas
+for CURRENT_HOST in $HOSTS; do
   echo "Transferring cookies from /app/cookies to $CURRENT_HOST..."
 
   # Create a temporary directory on the remote server
