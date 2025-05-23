@@ -29,7 +29,7 @@ class NodeDataScorer:
         self.active_worker_version = None
         self.last_worker_version_refresh = 0
         self.worker_version_refresh_interval = 600  # 10 minutes in seconds
-        self.api_url = os.getenv("MASA_TEE_API", "https://tee.api.masa.ai")
+        self.api_url = os.getenv("MASA_TEE_API", "https://tee.api.masa.ai").rstrip("/")
         logger.info("Initialized NodeDataScorer")
         # This can be replaced with a service client or API call in the future
 
