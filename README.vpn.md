@@ -189,6 +189,57 @@ To make sure your worker-vpn container is properly routing through the VPN:
 
 Regular datacenter VPN IPs are often flagged and blocked by services. Residential IPs are much less likely to be detected, making them essential for reliable operation.
 
+## 🔄 VPN File Distribution
+
+### VPN Updater Service
+
+The VPN updater service allows you to distribute VPN configuration files to multiple remote hosts, similar to how the cookies updater works. This is useful when you have multiple miners running on different servers that all need the same VPN configuration.
+
+#### Configuration
+
+Add the following environment variables to your `.env` file:
+
+```bash
+# VPN Updater Configuration
+VPN_REMOTE_HOSTS=192.168.1.100,192.168.1.101,192.168.1.102
+VPN_REMOTE_USER=azureuser
+VPN_REMOTE_DIR=/tmp/vpn-upload
+```
+
+- `VPN_REMOTE_HOSTS`: Comma-separated list of IP addresses where you want to distribute VPN files
+- `VPN_REMOTE_USER`: SSH username for remote hosts
+- `VPN_REMOTE_DIR`: Temporary directory on remote hosts for file transfer
+
+#### Usage
+
+1. **Ensure SSH key is available**: The service uses the `key.pem` file for SSH authentication
+
+2. **Run the VPN updater**:
+
+   ```bash
+   docker compose --profile vpn-refresh up
+   ```
+
+3. **What it does**:
+   - Copies all files from your local `vpn/` directory to each remote host
+   - Finds all `vpn-volume` Docker volumes on each remote host
+   - Updates each volume with the new VPN configuration files
+   - Supports multiple miners per host (each with unique volumes using the `-p` flag pattern)
+
+#### How it Works
+
+The VPN updater service:
+
+1. **Local Mode**: If `VPN_REMOTE_HOSTS` is set to `localhost`, it updates the local `vpn-volume` directly
+2. **Remote Mode**: For remote hosts, it:
+   - Uses SSH to connect to each host
+   - Transfers VPN files via SCP
+   - Finds all VPN volumes using pattern matching (supports project prefixes like `miner-1_vpn-volume`)
+   - Updates each volume using temporary Docker containers
+   - Cleans up temporary files
+
+This allows you to maintain centralized VPN configuration while distributing it to multiple mining instances across different servers.
+
 ## 🛠️ Troubleshooting
 
 ### Cookie Generator Issues

@@ -8,11 +8,11 @@ RUN apk add --no-cache \
     curl
 
 # Create necessary directories
-RUN mkdir -p /app/cookies /root/.ssh
+RUN mkdir -p /app/vpn /root/.ssh
 
 # Copy the update script
-COPY ./scripts/update_cookies.sh /app/
-RUN chmod +x /app/update_cookies.sh
+COPY ./scripts/update_vpn.sh /app/
+RUN chmod +x /app/update_vpn.sh
 
 # Set working directory
 WORKDIR /app
@@ -21,9 +21,9 @@ WORKDIR /app
 RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'set -e' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo '# Wait for the cookies to be generated' >> /app/entrypoint.sh && \
-    echo 'echo "Waiting for cookies to be available..."' >> /app/entrypoint.sh && \
-    echo 'while [ ! "$(ls -A /app/cookies 2>/dev/null)" ]; do' >> /app/entrypoint.sh && \
+    echo '# Wait for the VPN files to be available' >> /app/entrypoint.sh && \
+    echo 'echo "Waiting for VPN files to be available..."' >> /app/entrypoint.sh && \
+    echo 'while [ ! "$(ls -A /app/vpn 2>/dev/null)" ]; do' >> /app/entrypoint.sh && \
     echo '    sleep 2' >> /app/entrypoint.sh && \
     echo 'done' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
@@ -43,8 +43,8 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '# If we are running locally (on the same host as the Docker daemon)' >> /app/entrypoint.sh && \
     echo 'if [ "$REMOTE_HOST" = "localhost" ] || [ "$REMOTE_HOST" = "127.0.0.1" ]; then' >> /app/entrypoint.sh && \
     echo '    echo "Running in local mode..."' >> /app/entrypoint.sh && \
-    echo '    volume_name="cookies-volume"' >> /app/entrypoint.sh && \
-    echo '    echo "Copying cookies to volume $volume_name"' >> /app/entrypoint.sh && \
+    echo '    volume_name="vpn-volume"' >> /app/entrypoint.sh && \
+    echo '    echo "Copying VPN files to volume $volume_name"' >> /app/entrypoint.sh && \
     echo '    # Get the volume mount point within the Docker daemon' >> /app/entrypoint.sh && \
     echo '    volume_path=$(docker volume inspect --format "{{ .Mountpoint }}" $volume_name)' >> /app/entrypoint.sh && \
     echo '    if [ -z "$volume_path" ]; then' >> /app/entrypoint.sh && \
@@ -52,7 +52,7 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '        exit 1' >> /app/entrypoint.sh && \
     echo '    fi' >> /app/entrypoint.sh && \
     echo '    echo "Volume path: $volume_path"' >> /app/entrypoint.sh && \
-    echo '    # Copy the cookies directly to the volume location' >> /app/entrypoint.sh && \
+    echo '    # Copy the VPN files directly to the volume location' >> /app/entrypoint.sh && \
     echo '    # Note: This assumes Docker is running in privileged mode or has access to volume paths' >> /app/entrypoint.sh && \
     echo '    echo "Finding compatible container to help with copy..."' >> /app/entrypoint.sh && \
     echo '    # Find another container that already has the volume mounted' >> /app/entrypoint.sh && \
@@ -63,7 +63,7 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '        container_mount=$(docker inspect --format "{{ range .Mounts }}{{ if eq .Name \"$volume_name\" }}{{ .Destination }}{{ end }}{{ end }}" $container_id)' >> /app/entrypoint.sh && \
     echo '        echo "Container mount point: $container_mount"' >> /app/entrypoint.sh && \
     echo '        # Copy files via the container' >> /app/entrypoint.sh && \
-    echo '        for file in /app/cookies/*; do' >> /app/entrypoint.sh && \
+    echo '        for file in /app/vpn/*; do' >> /app/entrypoint.sh && \
     echo '            if [ -f "$file" ]; then' >> /app/entrypoint.sh && \
     echo '                filename=$(basename "$file")' >> /app/entrypoint.sh && \
     echo '                echo "Copying $filename..."' >> /app/entrypoint.sh && \
@@ -71,7 +71,7 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '                docker exec $container_id chown 1000:1000 "$container_mount/$filename"' >> /app/entrypoint.sh && \
     echo '            fi' >> /app/entrypoint.sh && \
     echo '        done' >> /app/entrypoint.sh && \
-    echo '        echo "Cookies copied successfully via container $container_id"' >> /app/entrypoint.sh && \
+    echo '        echo "VPN files copied successfully via container $container_id"' >> /app/entrypoint.sh && \
     echo '    else' >> /app/entrypoint.sh && \
     echo '        echo "No containers with this volume found. Will try direct volume copying instead."' >> /app/entrypoint.sh && \
     echo '        # Try to copy files directly to the volume (this may fail depending on Docker configuration)' >> /app/entrypoint.sh && \
@@ -81,7 +81,7 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo '        echo "Created test file. Attempting actual copy..."' >> /app/entrypoint.sh && \
     echo '        docker run --rm -v $volume_name:/volume alpine ls -la /volume' >> /app/entrypoint.sh && \
     echo '        # Note: We are avoiding the direct path mount that was causing issues' >> /app/entrypoint.sh && \
-    echo '        for file in /app/cookies/*; do' >> /app/entrypoint.sh && \
+    echo '        for file in /app/vpn/*; do' >> /app/entrypoint.sh && \
     echo '            if [ -f "$file" ]; then' >> /app/entrypoint.sh && \
     echo '                filename=$(basename "$file")' >> /app/entrypoint.sh && \
     echo '                echo "Copying $filename..."' >> /app/entrypoint.sh && \
@@ -93,10 +93,10 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'else' >> /app/entrypoint.sh && \
     echo '    echo "Running in remote mode - transferring to hosts defined in REMOTE_HOSTS..."' >> /app/entrypoint.sh && \
     echo '    # Execute the update script' >> /app/entrypoint.sh && \
-    echo '    /app/update_cookies.sh' >> /app/entrypoint.sh && \
+    echo '    /app/update_vpn.sh' >> /app/entrypoint.sh && \
     echo 'fi' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
-    echo 'echo "Cookie update process completed!"' >> /app/entrypoint.sh
+    echo 'echo "VPN update process completed!"' >> /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh
 

@@ -115,7 +115,7 @@ services:
     ports:
       - "${VPN_PORT:-3128}:${VPN_PORT:-3128}"
     volumes:
-      - ./vpn:/etc/openvpn/config
+      - vpn-volume:/etc/openvpn/config
     env_file: .env
     healthcheck:
       test: ["CMD", "bash", "-c", "[ \"$(cat /tmp/vpn_ready)\" = \"1\" ]"]
@@ -170,8 +170,8 @@ services:
       - ./key.pem:/app/key.pem:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - COOKIES_REMOTE_HOSTS=${COOKIES_REMOTE_HOSTS:-localhost}
-      - COOKIES_REMOTE_USER=${COOKIES_REMOTE_USER:-azureuser}
+      - REMOTE_HOSTS=${REMOTE_HOSTS:-localhost}
+      - REMOTE_USER=${REMOTE_USER:-azureuser}
       - COOKIES_REMOTE_DIR=${COOKIES_REMOTE_DIR:-/tmp/cookies-upload}
       - PYTHONUNBUFFERED=1
     restart: "no"
@@ -188,6 +188,34 @@ services:
       cookies-generator:
         condition: service_completed_successfully
 
+  vpn-updater:
+    profiles: ["vpn-refresh"]
+    image: vpn-updater:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile.vpn.updater
+    volumes:
+      - ./.env:/app/.env
+      - ${PWD}/vpn:/app/vpn
+      - ./key.pem:/app/key.pem:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - REMOTE_HOSTS=${REMOTE_HOSTS:-localhost}
+      - REMOTE_USER=${REMOTE_USER:-azureuser}
+      - VPN_REMOTE_DIR=${VPN_REMOTE_DIR:-/tmp/vpn-upload}
+      - PYTHONUNBUFFERED=1
+    restart: "no"
+    env_file: .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
+
   watchtower:
     profiles: ["miner", "miner-tee", "miner-tee-vpn", "validator", "validator-tee"]
     image: containrrr/watchtower
@@ -198,3 +226,4 @@ services:
 
 volumes:
   cookies-volume:
+  vpn-volume:
