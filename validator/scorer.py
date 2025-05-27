@@ -26,7 +26,10 @@ class NodeDataScorer:
         self.active_stat_name = None
         self.last_stat_name_refresh = 0
         self.stat_name_refresh_interval = 3600  # 1 hour in seconds
-        self.api_url = os.getenv("MASA_TEE_API", "https://tee.api.masa.ai")
+        self.active_worker_version = None
+        self.last_worker_version_refresh = 0
+        self.worker_version_refresh_interval = 600  # 10 minutes in seconds
+        self.api_url = os.getenv("MASA_TEE_API", "https://tee-api.masa.ai").rstrip("/")
         logger.info("Initialized NodeDataScorer")
         # This can be replaced with a service client or API call in the future
 
@@ -71,12 +74,55 @@ class NodeDataScorer:
         # Default to None if no stat name is available
         return None
 
+    async def fetch_active_worker_version(self):
+        """
+        Fetch the active worker version from the API.
+
+        :return: The active worker version
+        """
+        current_time = time.time()
+
+        # Return cached worker version if refresh interval hasn't passed
+        if (
+            self.active_worker_version is not None
+            and current_time - self.last_worker_version_refresh
+            < self.worker_version_refresh_interval
+        ):
+            return self.active_worker_version
+
+        logger.info("Fetching active worker version from API")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.api_url}/tee-version") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.active_worker_version = data.get("worker_version")
+                        self.last_worker_version_refresh = current_time
+                        logger.info(
+                            f"Active worker version: " f"{self.active_worker_version}"
+                        )
+                        return self.active_worker_version
+                    else:
+                        logger.error(
+                            f"Failed to fetch worker version: HTTP {response.status}"
+                        )
+        except Exception as e:
+            logger.error(f"Error fetching worker version: {str(e)}")
+
+        # If fetch fails but we have a cached value, use that
+        if self.active_worker_version is not None:
+            logger.warning("Using cached worker version")
+            return self.active_worker_version
+
+        # Default to None if no worker version is available
+        return None
+
     def aggregate_telemetry_stats(
         self, telemetry_result: Dict[str, Any]
     ) -> Dict[str, int]:
         """
         Aggregate telemetry stats from multiple worker IDs.
-        Only count stats with the active stat name.
+        Only count stats with the active stat name and active worker version.
 
         :param telemetry_result: The telemetry result with stats by worker ID
         :return: A dictionary with aggregated stats
@@ -97,6 +143,26 @@ class NodeDataScorer:
         # Get the stats dictionary
         stats_dict = telemetry_result.get("stats", {})
         worker_id = telemetry_result.get("worker_id", "unavailable")
+        worker_version = telemetry_result.get("worker_version", None)
+
+        # Skip if active_worker_version and worker_version doesn't match
+        if (
+            self.active_worker_version is not None
+            and worker_version != self.active_worker_version
+        ):
+            logger.info(
+                f"Worker ({worker_id}): Skipping due to version mismatch. "
+                f"Got {worker_version}, expected {self.active_worker_version}"
+            )
+            return stats
+
+        if self.active_worker_version is None or worker_version is None:
+            logger.info(
+                f"Worker ({worker_id}): Skipping due to missing version. "
+                f"Worker verison is: {worker_version}"
+                f"Expected verison is: {self.active_worker_version}"
+            )
+            return stats
 
         # Check if this is using the old format (stats directly in stats object)
         # or new format (stats inside worker IDs)
@@ -126,7 +192,8 @@ class NodeDataScorer:
 
                 # Aggregate stats from this worker
                 logger.info(
-                    f"Worker ({worker_id}): Has source worker id {source_worker_id} and it matches the indexer worker"
+                    f"Worker ({worker_id}): Has source worker id {source_worker_id} "
+                    f"and it matches the indexer worker"
                 )
                 for stat_name in stats:
                     stats[stat_name] += worker_stats.get(stat_name, 0)
@@ -141,10 +208,15 @@ class NodeDataScorer:
         """
         logger.info("Starting telemetry fetching process...")
 
-        # Fetch the active stat name
+        # Fetch the active stat name and worker version
         await self.fetch_active_stat_name()
+        await self.fetch_active_worker_version()
         logger.info(
             f"Using active stat name: {self.active_stat_name or 'None (counting all)'}"
+        )
+        logger.info(
+            f"Using active worker version: "
+            f"{self.active_worker_version or 'None (counting all)'}"
         )
 
         logger.info("Syncing metagraph to get latest node information")
