@@ -14,6 +14,11 @@ class MinersNATSPublisher:
         self.validator = validator
 
     async def send_connected_nodes(self):
+        # Check if routing table is currently being updated
+        if getattr(self.validator, "routing_table_updating", False):
+            logger.debug("Skipping NATS publish during routing table update")
+            return
+
         # Get connected nodes from the validator
         routing_table = self.validator.routing_table
         addresses = routing_table.get_all_addresses()
