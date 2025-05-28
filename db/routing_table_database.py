@@ -113,6 +113,36 @@ class RoutingTableDatabase:
             )
             conn.commit()
 
+    def clean_old_entries_conservative(self):
+        """
+        Remove entries where the timestamp is more than 6 hours older.
+        More conservative cleanup for very old entries only.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM miner_addresses 
+                WHERE timestamp < datetime('now', '-6 hours')
+                """
+            )
+            conn.commit()
+
+    def remove_miner_address_by_address(self, address):
+        """
+        Remove a miner address entry by address only.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM miner_addresses 
+                WHERE address = ?
+                """,
+                (address,),
+            )
+            conn.commit()
+
     def register_worker(self, worker_id, hotkey):
         """
         Register a worker_id with a hotkey in the worker registry.

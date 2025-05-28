@@ -71,6 +71,9 @@ class Validator:
 
         self.routing_table = RoutingTable()
 
+        # Add flag to coordinate routing table updates with NATS publishing
+        self.routing_table_updating = False
+
         self.metagraph = Metagraph(netuid=self.netuid, substrate=self.substrate)
         self.metagraph.sync_nodes()
 
