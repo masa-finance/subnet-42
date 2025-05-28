@@ -189,6 +189,20 @@ class RoutingTable:
         except sqlite3.Error as e:
             logger.error(f"Failed to clean old entries: {e}")
 
+    def clean_old_entries_conservative(self):
+        """Clean very old entries (6+ hours) from both tables."""
+        try:
+            self.db.clean_old_entries_conservative()
+        except sqlite3.Error as e:
+            logger.error(f"Failed to clean old entries conservatively: {e}")
+
+    def remove_miner_address_by_address(self, address):
+        """Remove a miner address by address only."""
+        try:
+            self.db.remove_miner_address_by_address(address)
+        except sqlite3.Error as e:
+            logger.error(f"Failed to remove address {address}: {e}")
+
     async def add_unregistered_tee(self, address, hotkey):
         """Add an unregistered TEE to the database."""
         try:
