@@ -79,6 +79,7 @@ class BackgroundTasks:
                 self.validator.telemetry_storage.clean_old_entries(
                     TELEMETRY_EXPIRATION_HOURS
                 )
+                await self.validator.node_manager.update_tee_list()
                 # Node data collection moved to its own loop
 
                 # Wait for next cycle

@@ -203,11 +203,10 @@ class NodeManager:
                 )
                 keys_to_delete.append(hotkey)
 
+        logger.info(f"Deleteing keys from connected nodes: {keys_to_delete}")
         for hotkey in keys_to_delete:
             del self.connected_nodes[hotkey]
-
-        self.validator.connected_tee_list = []
-        await self.update_tee_list()
+            self.validator.routing_table.clear_miner(hotkey)
 
     async def send_custom_message(self, node_hotkey: str, message: str) -> None:
         """
@@ -575,9 +574,6 @@ class NodeManager:
                             f"Error during cleanup of {hotkey} - {address}: "
                             f"{str(e)}"
                         )
-
-            # Perform time-based cleanup for very old entries (older than 6 hours)
-            routing_table.clean_old_entries_conservative()
 
             # Clean up any unregistered TEEs that are now in the routing table
             try:
