@@ -96,19 +96,15 @@ class RoutingTable:
             return []
 
     def get_all_addresses(self):
-        """Retrieve a list of all addresses in the database."""
+        """Get all unique addresses, randomized for fair distribution."""
         try:
-            with self.db.lock, sqlite3.connect(self.db.db_path) as conn:
+            with sqlite3.connect(self.db.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT address FROM miner_addresses
-                """
-                )
-                addresses = cursor.fetchall()
-                return [address[0] for address in addresses]
+                # Use ORDER BY RANDOM() to randomize the list order
+                cursor.execute("SELECT address FROM miner_addresses ORDER BY RANDOM()")
+                return [row[0] for row in cursor.fetchall()]
         except sqlite3.Error as e:
-            logger.error(f"Failed to retrieve all addresses: {e}")
+            logger.error(f"Failed to get addresses: {e}")
             return []
 
     def get_all_addresses_with_hotkeys(self):

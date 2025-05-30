@@ -1,3 +1,4 @@
+import random
 from typing import Dict, Optional
 from fiber.networking.models import NodeWithFernet as Node
 from fiber.encrypted.validator import handshake, client as vali_client
@@ -290,7 +291,11 @@ class NodeManager:
             # Track entries that are successfully verified in this update cycle
             verified_entries = set()
 
-            for hotkey, _ in self.connected_nodes.items():
+            # Shuffle connected nodes for fair processing order
+            connected_nodes_items = list(self.connected_nodes.items())
+            random.shuffle(connected_nodes_items)
+
+            for hotkey, _ in connected_nodes_items:
                 logger.debug(f"Processing hotkey: {hotkey}")
                 if hotkey in self.validator.metagraph.nodes:
                     node = self.validator.metagraph.nodes[hotkey]
@@ -317,6 +322,7 @@ class NodeManager:
                         current_tees = routing_table.get_miner_addresses(
                             hotkey=node.hotkey
                         )
+
                         logger.debug(
                             f"Retrieved {len(current_tees) if current_tees else 0} "
                             f"current TEEs for {hotkey}"
