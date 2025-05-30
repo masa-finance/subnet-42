@@ -87,6 +87,25 @@ class RoutingTableDatabase:
                 )
             conn.commit()
 
+    def update_timestamp(self, hotkey, uid, address, worker_id=None):
+        """
+        Update the timestamp for an existing miner address record to current time.
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE miner_addresses 
+                SET timestamp = CURRENT_TIMESTAMP 
+                WHERE hotkey = ? AND uid = ? AND address = ? 
+                AND worker_id = ?
+                """,
+                (hotkey, uid, address, worker_id),
+            )
+            conn.commit()
+            # Return True if a row was updated
+            return cursor.rowcount > 0
+
     def delete_address(self, hotkey, uid):
         with self.lock, sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -332,6 +351,24 @@ class RoutingTableDatabase:
             )
             results = cursor.fetchall()
             return [(row[0], row[1], row[2]) for row in results]
+
+    def get_address_timestamp(self, address):
+        """
+        Get the timestamp of a specific address.
+
+        :param address: The address to check
+        :return: The timestamp string or None if not found
+        """
+        with self.lock, sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT timestamp FROM miner_addresses WHERE address = ?
+                """,
+                (address,),
+            )
+            result = cursor.fetchone()
+            return result[0] if result else None
 
     def remove_unregistered_tee(self, address):
         """

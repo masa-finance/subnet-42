@@ -33,6 +33,8 @@ class RoutingTable:
                     logger.debug(
                         "Skipping add: Entry with identical fields already exists"
                     )
+                    # Update timestamp to current time for the existing entry
+                    self.update_timestamp(hotkey, uid, address, worker_id)
                     return
 
                 # If same hotkey and uid but different address or worker_id,
@@ -55,6 +57,28 @@ class RoutingTable:
                 logger.debug(f"Address {address} is already registered in the system")
             else:
                 logger.error(f"Failed to add address: {e}")
+
+    def update_timestamp(self, hotkey, uid, address, worker_id=None):
+        """Update the timestamp for an existing miner address to current time."""
+        try:
+            success = self.db.update_timestamp(hotkey, uid, address, worker_id)
+            if success:
+                logger.debug(f"Updated timestamp for {hotkey} - {address}")
+            else:
+                logger.debug(
+                    f"No matching entry found to update timestamp for "
+                    f"{hotkey} - {address}"
+                )
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update timestamp: {e}")
+
+    def get_address_timestamp(self, address):
+        """Get the timestamp of a specific address."""
+        try:
+            return self.db.get_address_timestamp(address)
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get timestamp for address {address}: {e}")
+            return None
 
     def remove_miner_address(self, hotkey, uid):
         """Remove a specific miner address from the database."""
