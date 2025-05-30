@@ -102,8 +102,8 @@ class Validator:
                 self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
             )
 
-            # 30 minutes
-            asyncio.create_task(self.background_tasks.update_tee(60 * 30))
+            # 1 hour
+            asyncio.create_task(self.background_tasks.update_tee(60 * 60))
 
             # Start telemetry collection in its own task
             asyncio.create_task(self.background_tasks.telemetry_loop(60 * 10))
