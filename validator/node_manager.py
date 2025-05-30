@@ -203,11 +203,20 @@ class NodeManager:
                 )
                 keys_to_delete.append(hotkey)
 
-        for hotkey in keys_to_delete:
-            del self.connected_nodes[hotkey]
+        # Only process if there are actually disconnected nodes
+        if keys_to_delete:
+            for hotkey in keys_to_delete:
+                del self.connected_nodes[hotkey]
+                # Remove only this specific miner's entries from routing table
+                self.validator.routing_table.clear_miner(hotkey)
 
-        self.validator.connected_tee_list = []
-        await self.update_tee_list()
+            logger.info(
+                f"Cleaned up {len(keys_to_delete)} disconnected miners from routing table"
+            )
+
+        # REMOVED: No longer clearing the entire connected_tee_list
+        # REMOVED: No longer forcing a full update_tee_list() rebuild
+        # The routing table now maintains its state and only removes specific disconnected miners
 
     async def send_custom_message(self, node_hotkey: str, message: str) -> None:
         """
