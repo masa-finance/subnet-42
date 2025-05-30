@@ -83,18 +83,33 @@ class BackgroundTasks:
                 # Track connected nodes before processing
                 connected_nodes_count = len(self.validator.node_manager.connected_nodes)
 
-                # Main tasks
-                await self.validator.node_manager.connect_new_nodes()
+                # Set update flag BEFORE any routing table operations
+                self.validator.routing_table_updating = True
 
-                # Track nodes after connection attempt
-                nodes_after_connect = len(self.validator.node_manager.connected_nodes)
-                new_connections = nodes_after_connect - connected_nodes_count
+                try:
+                    # Main tasks in proper order
+                    await self.validator.node_manager.connect_new_nodes()
 
+                    # Track nodes after connection attempt
+                    nodes_after_connect = len(
+                        self.validator.node_manager.connected_nodes
+                    )
+                    new_connections = nodes_after_connect - connected_nodes_count
+
+                    # Update TEE list while flag is set
+                    await self.validator.node_manager.update_tee_list()
+
+                    # Clean old telemetry entries
+                    self.validator.telemetry_storage.clean_old_entries(
+                        TELEMETRY_EXPIRATION_HOURS
+                    )
+
+                finally:
+                    # Clear update flag before NATS publishing (ensures atomic operation)
+                    self.validator.routing_table_updating = False
+
+                # Now safely publish to NATS with consistent data
                 await self.validator.NATSPublisher.send_connected_nodes()
-                self.validator.telemetry_storage.clean_old_entries(
-                    TELEMETRY_EXPIRATION_HOURS
-                )
-                await self.validator.node_manager.update_tee_list()
 
                 # Update metrics for successful cycle
                 if execution_id:
@@ -119,6 +134,9 @@ class BackgroundTasks:
                 await asyncio.sleep(safe_cadence)
 
             except Exception as e:
+                # Ensure flag is cleared on error
+                self.validator.routing_table_updating = False
+
                 # Log the error
                 logger.error(f"Error updating TEE 🚩: {str(e)}")
                 logger.debug(f"Error in updating tee: {str(e)}")

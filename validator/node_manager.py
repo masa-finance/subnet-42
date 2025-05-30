@@ -274,31 +274,26 @@ class NodeManager:
         logger.info("Starting TEE list update")
         routing_table = self.validator.routing_table
 
-        # Set update flag to coordinate with NATS publisher
-        self.validator.routing_table_updating = True
+        # Note: routing_table_updating flag is now managed by background_tasks
+        # to ensure proper coordination with NATS publishing
 
-        try:
-            # Get all current entries and initialize tracking
-            current_entries_set, verified_entries = (
-                self._get_current_entries_for_update(routing_table)
-            )
+        # Get all current entries and initialize tracking
+        current_entries_set, verified_entries = self._get_current_entries_for_update(
+            routing_table
+        )
 
-            # Process all connected nodes
-            await self._process_connected_nodes(routing_table, verified_entries)
+        # Process all connected nodes
+        await self._process_connected_nodes(routing_table, verified_entries)
 
-            # Clean up unverified entries
-            await self._cleanup_unverified_entries(
-                routing_table, current_entries_set, verified_entries
-            )
+        # Clean up unverified entries
+        await self._cleanup_unverified_entries(
+            routing_table, current_entries_set, verified_entries
+        )
 
-            # Clean up unregistered TEEs
-            await self._cleanup_unregistered_tees(routing_table)
+        # Clean up unregistered TEEs
+        await self._cleanup_unregistered_tees(routing_table)
 
-            logger.info("Completed TEE list update ✅")
-
-        finally:
-            # Clear update flag
-            self.validator.routing_table_updating = False
+        logger.info("Completed TEE list update ✅")
 
     def _get_current_entries_for_update(self, routing_table):
         """Get all current addresses before starting update to track what needs cleanup."""
