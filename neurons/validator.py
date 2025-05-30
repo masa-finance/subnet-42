@@ -108,6 +108,9 @@ class Validator:
             # Start telemetry collection in its own task
             asyncio.create_task(self.background_tasks.telemetry_loop(60 * 10))
 
+            # Start process monitoring cleanup task
+            asyncio.create_task(self.background_tasks.monitor_cleanup_loop())
+
         except Exception as e:
             logger.error(f"Failed to start validator: {str(e)}")
             raise

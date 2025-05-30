@@ -351,10 +351,6 @@ class NodeManager:
                 f"Retrieved TEE addresses for hotkey {hotkey}: {tee_addresses}"
             )
 
-            logger.debug(
-                f"Current TEE addresses for hotkey {hotkey}: {current_tee_urls}"
-            )
-
             if tee_addresses:
                 for tee_address in tee_addresses.split(","):
                     tee_address = tee_address.strip()
