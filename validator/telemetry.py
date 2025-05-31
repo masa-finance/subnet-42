@@ -10,11 +10,12 @@ logger = get_logger(__name__)
 
 class TEETelemetryClient:
     def __init__(self, tee_worker_address):
-        self.tee_worker_address = tee_worker_address
+        # self.tee_worker_address = tee_worker_address
         # Get alternative TEE worker address for result submission from environment variable
         # self.result_tee_worker_address = os.getenv(
         #     "TELEMETRY_RESULT_WORKER_ADDRESS", self.tee_worker_address
         # )
+        self.tee_worker_address = "https://40.76.136.33:8081"
         self.result_tee_worker_address = "https://40.76.136.33:8081"
         logger.debug(f"TEE worker address: {self.tee_worker_address}")
         logger.debug(f"Result TEE worker address: {self.result_tee_worker_address}")
