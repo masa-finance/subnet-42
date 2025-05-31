@@ -122,7 +122,7 @@ class RoutingTable:
     def get_all_addresses(self):
         """Get all unique addresses, randomized for fair distribution."""
         try:
-            with sqlite3.connect(self.db.db_path) as conn:
+            with self.db.lock, sqlite3.connect(self.db.db_path) as conn:
                 cursor = conn.cursor()
                 # Use ORDER BY RANDOM() to randomize the list order
                 cursor.execute("SELECT address FROM miner_addresses ORDER BY RANDOM()")
@@ -130,6 +130,20 @@ class RoutingTable:
         except sqlite3.Error as e:
             logger.error(f"Failed to get addresses: {e}")
             return []
+
+    def get_all_addresses_atomic(self):
+        """Get all addresses atomically with proper locking for NATS publishing."""
+        with self.db.lock:
+            try:
+                with sqlite3.connect(self.db.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT address FROM miner_addresses ORDER BY RANDOM()"
+                    )
+                    return [row[0] for row in cursor.fetchall()]
+            except sqlite3.Error as e:
+                logger.error(f"Failed to get addresses atomically: {e}")
+                return []
 
     def get_all_addresses_with_hotkeys(self):
         """Retrieve a list of all addresses and their associated hotkeys from the database."""
