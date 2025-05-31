@@ -152,7 +152,7 @@ class RoutingTable:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT hotkey, address, worker_id FROM miner_addresses
+                    SELECT hotkey, address, worker_id FROM miner_addresses ORDER BY RANDOM()
                 """
                 )
                 results = cursor.fetchall()
