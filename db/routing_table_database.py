@@ -1,5 +1,6 @@
 import sqlite3
 from threading import Lock
+import random
 
 
 class RoutingTableDatabase:
@@ -252,11 +253,14 @@ class RoutingTableDatabase:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT worker_id, hotkey FROM worker_registry ORDER BY RANDOM()
+                SELECT worker_id, hotkey FROM worker_registry
                 """
             )
             results = cursor.fetchall()
-            return [(row[0], row[1]) for row in results]
+            # Convert to list and randomize in Python
+            worker_list = [(row[0], row[1]) for row in results]
+            random.shuffle(worker_list)
+            return worker_list
 
     def clean_old_worker_registrations(self, hours=24):
         """
