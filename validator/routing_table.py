@@ -1,6 +1,7 @@
 import os
 import aiohttp
 import asyncio
+import random
 
 from db.routing_table_database import RoutingTableDatabase
 import sqlite3
@@ -124,9 +125,12 @@ class RoutingTable:
         try:
             with self.db.lock, sqlite3.connect(self.db.db_path) as conn:
                 cursor = conn.cursor()
-                # Use ORDER BY RANDOM() to randomize the list order
-                cursor.execute("SELECT address FROM miner_addresses ORDER BY RANDOM()")
-                return [row[0] for row in cursor.fetchall()]
+                # Get addresses without ORDER BY to avoid index interference
+                cursor.execute("SELECT address FROM miner_addresses")
+                addresses = [row[0] for row in cursor.fetchall()]
+                # Randomize in Python for true randomization
+                random.shuffle(addresses)
+                return addresses
         except sqlite3.Error as e:
             logger.error(f"Failed to get addresses: {e}")
             return []
@@ -137,10 +141,12 @@ class RoutingTable:
             try:
                 with sqlite3.connect(self.db.db_path) as conn:
                     cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT address FROM miner_addresses ORDER BY RANDOM()"
-                    )
-                    return [row[0] for row in cursor.fetchall()]
+                    # Get addresses without ORDER BY to avoid UNIQUE index interference
+                    cursor.execute("SELECT address FROM miner_addresses")
+                    addresses = [row[0] for row in cursor.fetchall()]
+                    # Randomize in Python for true randomization
+                    random.shuffle(addresses)
+                    return addresses
             except sqlite3.Error as e:
                 logger.error(f"Failed to get addresses atomically: {e}")
                 return []
@@ -152,14 +158,17 @@ class RoutingTable:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT hotkey, address, worker_id FROM miner_addresses ORDER BY RANDOM()
+                    SELECT hotkey, address, worker_id FROM miner_addresses
                 """
                 )
                 results = cursor.fetchall()
-                return [
+                # Convert to list and randomize in Python
+                address_list = [
                     (hotkey, address, worker_id)
                     for hotkey, address, worker_id in results
                 ]
+                random.shuffle(address_list)
+                return address_list
         except sqlite3.Error as e:
             logger.error(f"Failed to retrieve addresses with hotkeys: {e}")
             return []
