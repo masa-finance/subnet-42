@@ -1,3 +1,4 @@
+import random
 from typing import Dict, Optional
 from fiber.networking.models import NodeWithFernet as Node
 from fiber.encrypted.validator import handshake, client as vali_client
@@ -10,6 +11,7 @@ from interfaces.types import NodeData
 from validator.telemetry import TEETelemetryClient
 from validator.errors_storage import ErrorsStorage
 import asyncio
+from datetime import datetime
 
 if TYPE_CHECKING:
     from neurons.validator import Validator
@@ -202,11 +204,10 @@ class NodeManager:
                 )
                 keys_to_delete.append(hotkey)
 
+        logger.info(f"Deleteing keys from connected nodes: {keys_to_delete}")
         for hotkey in keys_to_delete:
             del self.connected_nodes[hotkey]
-
-        self.validator.connected_tee_list = []
-        await self.update_tee_list()
+            self.validator.routing_table.clear_miner(hotkey)
 
     async def send_custom_message(self, node_hotkey: str, message: str) -> None:
         """
@@ -273,336 +274,359 @@ class NodeManager:
         logger.info("Starting TEE list update")
         routing_table = self.validator.routing_table
 
-        # Set update flag to coordinate with NATS publisher
-        self.validator.routing_table_updating = True
+        # Note: routing_table_updating flag is now managed by background_tasks
+        # to ensure proper coordination with NATS publishing
+
+        # Get all current entries and initialize tracking
+        current_entries_set, verified_entries = self._get_current_entries_for_update(
+            routing_table
+        )
+
+        # Process all connected nodes
+        await self._process_connected_nodes(routing_table, verified_entries)
+
+        # Clean up unverified entries
+        await self._cleanup_unverified_entries(
+            routing_table, current_entries_set, verified_entries
+        )
+
+        # Clean up unregistered TEEs
+        await self._cleanup_unregistered_tees(routing_table)
+
+        logger.info("Completed TEE list update ✅")
+
+    def _get_current_entries_for_update(self, routing_table):
+        """Get all current addresses before starting update to track what needs cleanup."""
+        all_current_entries = (
+            routing_table.get_all_addresses_with_hotkeys()
+        )  # Insert order here
+        current_entries_set = set()
+        for hotkey, address, worker_id in all_current_entries:
+            current_entries_set.add((hotkey, address))
+
+        logger.debug(
+            f"Starting update with {len(current_entries_set)} existing entries"
+        )
+
+        # Track entries that are successfully verified in this update cycle
+        verified_entries = set()
+
+        return current_entries_set, verified_entries
+
+    async def _process_connected_nodes(self, routing_table, verified_entries):
+        """Process all connected nodes for TEE registration."""
+        # Shuffle connected nodes for fair processing order
+        connected_nodes_items = list(self.connected_nodes.items())
+        random.shuffle(connected_nodes_items)
+
+        for hotkey, _ in connected_nodes_items:
+            logger.debug(f"Processing hotkey: {hotkey}")
+            if hotkey in self.validator.metagraph.nodes:
+                node = self.validator.metagraph.nodes[hotkey]
+                await self._process_single_node(
+                    node, hotkey, routing_table, verified_entries
+                )
+
+    async def _process_single_node(self, node, hotkey, routing_table, verified_entries):
+        """Process a single node's TEE addresses."""
+        if node.ip == "0":
+            self.errors_storage.add_error(
+                hotkey=hotkey,
+                tee_address="",
+                miner_address=f"{node.ip}:{node.port}",
+                message="Skipped updating TEE: IP is 0",
+            )
+            return
+
+        logger.debug(f"Found node in metagraph for hotkey: {hotkey}")
 
         try:
-            # Get all current addresses before starting update to track what needs cleanup
-            all_current_entries = routing_table.get_all_addresses_with_hotkeys()
-            current_entries_set = set()
-            for hotkey, address, worker_id in all_current_entries:
-                current_entries_set.add((hotkey, address))
-
+            tee_addresses = await self.get_tee_address(node)
             logger.debug(
-                f"Starting update with {len(current_entries_set)} existing entries"
+                f"Retrieved TEE addresses for hotkey {hotkey}: {tee_addresses}"
             )
 
-            # Track entries that are successfully verified in this update cycle
-            verified_entries = set()
-
-            for hotkey, _ in self.connected_nodes.items():
-                logger.debug(f"Processing hotkey: {hotkey}")
-                if hotkey in self.validator.metagraph.nodes:
-                    node = self.validator.metagraph.nodes[hotkey]
-
-                    if node.ip == "0":
-                        self.errors_storage.add_error(
-                            hotkey=hotkey,
-                            tee_address="",
-                            miner_address=f"{node.ip}:{node.port}",
-                            message="Skipped updating TEE: IP is 0",
-                        )
-                        continue
-
-                    logger.debug(f"Found node in metagraph for hotkey: {hotkey}")
-
-                    try:
-                        tee_addresses = await self.get_tee_address(node)
-                        logger.debug(
-                            f"Retrieved TEE addresses for hotkey {hotkey}: "
-                            f"{tee_addresses}"
-                        )
-
-                        # Get current TEEs for this hotkey
-                        current_tees = routing_table.get_miner_addresses(
-                            hotkey=node.hotkey
-                        )
-                        logger.debug(
-                            f"Retrieved {len(current_tees) if current_tees else 0} "
-                            f"current TEEs for {hotkey}"
-                        )
-
-                        # Create a set of current TEE addresses for comparison
-                        current_tee_urls = set()
-                        if current_tees:
-                            for address, worker_id in current_tees:
-                                current_tee_urls.add(address)
-
-                        logger.debug(
-                            f"Current TEE addresses for hotkey {hotkey}: "
-                            f"{current_tee_urls}"
-                        )
-
-                        if tee_addresses:
-                            for tee_address in tee_addresses.split(","):
-                                tee_address = tee_address.strip()
-                                # Skip if localhost
-                                if (
-                                    "localhost" in tee_address
-                                    or "127.0.0.1" in tee_address
-                                ):
-                                    logger.debug(
-                                        f"Skipping localhost TEE address "
-                                        f"{tee_address} - {hotkey}"
-                                    )
-                                    self.errors_storage.add_error(
-                                        hotkey=hotkey,
-                                        tee_address=tee_address,
-                                        miner_address=f"{node.ip}:{node.port}",
-                                        message="Skipped: localhost TEE address",
-                                    )
-                                    continue
-
-                                # Skip if not https
-                                if not tee_address.startswith("https://"):
-                                    logger.debug(
-                                        f"Skipping non-HTTPS TEE address "
-                                        f"{tee_address} - {hotkey}"
-                                    )
-                                    self.errors_storage.add_error(
-                                        hotkey=hotkey,
-                                        tee_address=tee_address,
-                                        miner_address=f"{node.ip}:{node.port}",
-                                        message="Skipped: non-HTTPS TEE address",
-                                    )
-                                    continue
-
-                                try:
-                                    telemetry_client = TEETelemetryClient(tee_address)
-
-                                    logger.info(
-                                        f"Getting registration telemetry for "
-                                        f"{hotkey} at {tee_address}"
-                                    )
-
-                                    telemetry_result = await telemetry_client.execute_telemetry_sequence(
-                                        routing_table=routing_table
-                                    )
-
-                                    if not telemetry_result:
-                                        logger.warn(
-                                            f"Telemetry failed for hotkey {hotkey} - "
-                                            f"{tee_address} - {node.ip}:{node.port}"
-                                        )
-                                        # Add to unregistered TEEs table for tracking
-                                        await self.validator.routing_table.add_unregistered_tee(
-                                            address=tee_address, hotkey=hotkey
-                                        )
-                                        logger.info(
-                                            f"Added to unregistered TEEs: "
-                                            f"{tee_address} for hotkey {hotkey}"
-                                        )
-                                        self.errors_storage.add_error(
-                                            hotkey=hotkey,
-                                            tee_address=tee_address,
-                                            miner_address=f"{node.ip}:{node.port}",
-                                            message="Telemetry failed to return results",
-                                        )
-                                        continue
-
-                                    logger.info(
-                                        f"Telemetry successful for hotkey {hotkey} "
-                                        f"at {tee_address} with worker_id "
-                                        f"{telemetry_result.get('worker_id', 'N/A')}"
-                                    )
-
-                                    worker_id = telemetry_result.get("worker_id", None)
-
-                                    if worker_id is None:
-                                        logger.warning(
-                                            f"Skipping registration for {hotkey} at "
-                                            f"{tee_address} - No worker_id returned"
-                                        )
-                                        # Add to unregistered TEEs table for tracking
-                                        await self.validator.routing_table.add_unregistered_tee(
-                                            address=tee_address, hotkey=hotkey
-                                        )
-                                        logger.info(
-                                            f"Added to unregistered TEEs: "
-                                            f"{tee_address} for hotkey {hotkey}"
-                                        )
-                                        self.errors_storage.add_error(
-                                            hotkey=hotkey,
-                                            tee_address=tee_address,
-                                            miner_address=f"{node.ip}:{node.port}",
-                                            message="Skipped: No worker_id returned from telemetry",
-                                        )
-                                        continue
-
-                                    worker_hotkey = (
-                                        self.validator.routing_table.get_worker_hotkey(
-                                            worker_id
-                                        )
-                                    )
-
-                                    logger.info(f"worker id: {worker_id}")
-                                    logger.info(f"worker hotkey: {worker_hotkey}")
-                                    logger.info(f"node hotkey: {hotkey}")
-
-                                    is_worker_already_owned = (
-                                        worker_hotkey is not None
-                                        and worker_hotkey != hotkey
-                                    )
-
-                                    # This checks that a worker address is only owned by the first node that requests it
-                                    # For removing this restriction please communicate on discord
-                                    if is_worker_already_owned:
-                                        logger.warning(
-                                            f"Worker ID {worker_id} is already "
-                                            f"registered to another hotkey. "
-                                            f"({worker_hotkey}) Skipping registration "
-                                            f"for {hotkey}."
-                                        )
-                                        self.errors_storage.add_error(
-                                            hotkey=hotkey,
-                                            tee_address=tee_address,
-                                            miner_address=f"{node.ip}:{node.port}",
-                                            message=f"Skipped: Worker ID {worker_id} already registered to hotkey {worker_hotkey}",
-                                        )
-                                        continue
-
-                                    routing_table.register_worker(
-                                        hotkey=hotkey, worker_id=worker_id
-                                    )
-                                    routing_table.add_miner_address(
-                                        hotkey, node.node_id, tee_address, worker_id
-                                    )
-
-                                    logger.debug(
-                                        f"Added TEE address {tee_address} for "
-                                        f"hotkey {hotkey}"
-                                    )
-
-                                    # Mark this entry as verified in this update cycle
-                                    verified_entries.add((hotkey, tee_address))
-
-                                    # Check if this is a new worker registration (worker_id was not set before)
-                                    if worker_hotkey is None:
-                                        logger.info(
-                                            f"New worker registration: {worker_id} "
-                                            f"for hotkey {hotkey}"
-                                        )
-                                        # Send notification about new worker registration
-                                        await self.send_custom_message(
-                                            hotkey,
-                                            f"New worker registration: Your worker ID "
-                                            f"{worker_id} has been registered for the "
-                                            f"first time with hotkey {hotkey}",
-                                        )
-
-                                    # Send notification to miner about successful registration
-                                    await self.send_custom_message(
-                                        hotkey,
-                                        f"Your TEE address {tee_address} has been "
-                                        f"successfully registered with worker_id "
-                                        f"{worker_id} for hotkey {hotkey}",
-                                    )
-
-                                except sqlite3.IntegrityError:
-                                    logger.debug(
-                                        f"Address {tee_address} already exists "
-                                        f"for another miner"
-                                    )
-                                    self.errors_storage.add_error(
-                                        hotkey=hotkey,
-                                        tee_address=tee_address,
-                                        miner_address=f"{node.ip}:{node.port}",
-                                        message="Address already exists for another miner",
-                                    )
-                                except Exception as e:
-                                    logger.error(
-                                        f"Error registering TEE address "
-                                        f"{tee_address} for hotkey {hotkey}: {str(e)}"
-                                    )
-                                    # Add to unregistered TEEs table for tracking
-                                    await self.validator.routing_table.add_unregistered_tee(
-                                        address=tee_address, hotkey=hotkey
-                                    )
-                                    self.errors_storage.add_error(
-                                        hotkey=hotkey,
-                                        tee_address=tee_address,
-                                        miner_address=f"{node.ip}:{node.port}",
-                                        message=f"Error during registration: {str(e)}",
-                                    )
-                        else:
-                            logger.debug(f"No TEE addresses found for hotkey {hotkey}")
-                            # If a node has no TEE addresses, mark all its current entries for cleanup
-                            for address, _ in current_tees if current_tees else []:
-                                logger.info(
-                                    f"Marking {address} for cleanup "
-                                    f"(no TEE addresses provided)"
-                                )
-
-                    except Exception as e:
-                        logger.error(f"Error processing hotkey {hotkey}: {str(e)}")
-                        self.errors_storage.add_error(
-                            hotkey=hotkey,
-                            tee_address="",
-                            miner_address=f"{node.ip}:{node.port}",
-                            message=f"Error during TEE update: {str(e)}",
-                        )
-
-            # Now perform graceful cleanup: remove entries that weren't verified in this cycle
-            # and are older than a reasonable threshold (e.g., 2 hours)
-            unverified_entries = current_entries_set - verified_entries
-            if unverified_entries:
-                logger.info(
-                    f"Performing graceful cleanup of {len(unverified_entries)} "
-                    f"unverified entries"
-                )
-                for hotkey, address in unverified_entries:
-                    try:
-                        # Get the entry details to check age
-                        current_tees = routing_table.get_miner_addresses(hotkey=hotkey)
-                        for addr, worker_id in current_tees if current_tees else []:
-                            if addr == address:
-                                # Remove entries that failed verification in this cycle
-                                # We'll be more conservative and only remove entries that are older than 2 hours
-                                routing_table.remove_miner_address_by_address(address)
-                                logger.info(
-                                    f"Cleaned up unverified entry: {hotkey} - "
-                                    f"{address}"
-                                )
-                                break
-                    except Exception as e:
-                        logger.error(
-                            f"Error during cleanup of {hotkey} - {address}: "
-                            f"{str(e)}"
-                        )
-
-            # Perform time-based cleanup for very old entries (older than 6 hours)
-            routing_table.clean_old_entries_conservative()
-
-            # Clean up any unregistered TEEs that are now in the routing table
-            try:
-                # Get all registered addresses
-                registered_addrs = routing_table.get_all_addresses()
-
-                # Get current list of unregistered TEE addresses
-                unregistered_addrs = routing_table.get_all_unregistered_tee_addresses()
-
-                # Check which addresses should be removed from unregistered list
-                cleaned_count = 0
-
-                for address in registered_addrs:
-                    if address in unregistered_addrs:
-                        # This address was previously unregistered but is now registered
-                        routing_table.remove_unregistered_tee(address)
-                        cleaned_count += 1
-
-                if cleaned_count > 0:
-                    logger.info(
-                        f"Cleaned {cleaned_count} addresses from unregistered "
-                        f"TEEs that are now registered"
+            if tee_addresses:
+                for tee_address in tee_addresses.split(","):
+                    tee_address = tee_address.strip()
+                    await self._process_tee_address(
+                        tee_address, node, hotkey, routing_table, verified_entries
                     )
-            except Exception as e:
-                logger.error(f"Error cleaning up unregistered TEEs: {str(e)}")
+            else:
+                logger.debug(f"No TEE addresses found for hotkey {hotkey}")
+                # If a node has no TEE addresses, mark all its current entries for cleanup
+                for address, _ in current_tees if current_tees else []:
+                    logger.info(
+                        f"Marking {address} for cleanup (no TEE addresses provided)"
+                    )
+                    # IMPORTANT: This cleanup is not happening
 
-            logger.info("Completed TEE list update ✅")
+        except Exception as e:
+            logger.error(f"Error processing hotkey {hotkey}: {str(e)}")
+            self.errors_storage.add_error(
+                hotkey=hotkey,
+                tee_address="",
+                miner_address=f"{node.ip}:{node.port}",
+                message=f"Error during TEE update: {str(e)}",
+            )
 
-        finally:
-            # Clear update flag
-            self.validator.routing_table_updating = False
+    async def _process_tee_address(
+        self,
+        tee_address,
+        node,
+        hotkey,
+        routing_table,
+        verified_entries,
+    ):
+        """Process a single TEE address for registration."""
+        # Skip if localhost
+        if "localhost" in tee_address or "127.0.0.1" in tee_address:
+            logger.debug(f"Skipping localhost TEE address {tee_address} - {hotkey}")
+            self.errors_storage.add_error(
+                hotkey=hotkey,
+                tee_address=tee_address,
+                miner_address=f"{node.ip}:{node.port}",
+                message="Skipped: localhost TEE address",
+            )
+            return
+
+        # Skip if not https
+        if not tee_address.startswith("https://"):
+            logger.debug(f"Skipping non-HTTPS TEE address {tee_address} - {hotkey}")
+            self.errors_storage.add_error(
+                hotkey=hotkey,
+                tee_address=tee_address,
+                miner_address=f"{node.ip}:{node.port}",
+                message="Skipped: non-HTTPS TEE address",
+            )
+            return
+
+        try:
+            telemetry_client = TEETelemetryClient(tee_address)
+
+            logger.info(f"Getting registration telemetry for {hotkey} at {tee_address}")
+
+            telemetry_result = await telemetry_client.execute_telemetry_sequence(
+                routing_table=routing_table
+            )
+
+            if not telemetry_result:
+                await self._handle_telemetry_failure(
+                    hotkey,
+                    tee_address,
+                    node,
+                    routing_table,
+                    "Telemetry failed to return results",
+                )
+                return
+
+            logger.info(
+                f"Telemetry successful for hotkey {hotkey} "
+                f"at {tee_address} with worker_id "
+                f"{telemetry_result.get('worker_id', 'N/A')}"
+            )
+
+            worker_id = telemetry_result.get("worker_id", None)
+
+            if worker_id is None:
+                await self._handle_telemetry_failure(
+                    hotkey,
+                    tee_address,
+                    node,
+                    routing_table,
+                    "Skipped: No worker_id returned from telemetry",
+                )
+                return
+
+            # Check worker ownership
+            worker_hotkey = self.validator.routing_table.get_worker_hotkey(worker_id)
+
+            logger.info(f"worker id: {worker_id}")
+            logger.info(f"worker hotkey: {worker_hotkey}")
+            logger.info(f"node hotkey: {hotkey}")
+
+            is_worker_already_owned = (
+                worker_hotkey is not None and worker_hotkey != hotkey
+            )
+
+            # This checks that a worker address is only owned by the first node that requests it
+            # For removing this restriction please communicate on discord
+            if is_worker_already_owned:
+                logger.warning(
+                    f"Worker ID {worker_id} is already registered to another hotkey. "
+                    f"({worker_hotkey}) Skipping registration for {hotkey}."
+                )
+                self.errors_storage.add_error(
+                    hotkey=hotkey,
+                    tee_address=tee_address,
+                    miner_address=f"{node.ip}:{node.port}",
+                    message=f"Skipped: Worker ID {worker_id} already registered to hotkey {worker_hotkey}",
+                )
+                return
+
+            # Register the worker and TEE address
+            await self._register_tee_address(
+                routing_table,
+                hotkey,
+                node,
+                tee_address,
+                worker_id,
+                worker_hotkey,
+                verified_entries,
+            )
+
+        except sqlite3.IntegrityError:
+            logger.debug(f"Address {tee_address} already exists for another miner")
+            self.errors_storage.add_error(
+                hotkey=hotkey,
+                tee_address=tee_address,
+                miner_address=f"{node.ip}:{node.port}",
+                message="Address already exists for another miner",
+            )
+        except Exception as e:
+            logger.error(
+                f"Error registering TEE address {tee_address} for hotkey {hotkey}: {str(e)}"
+            )
+            # Add to unregistered TEEs table for tracking
+            await self.validator.routing_table.add_unregistered_tee(
+                address=tee_address, hotkey=hotkey
+            )
+            self.errors_storage.add_error(
+                hotkey=hotkey,
+                tee_address=tee_address,
+                miner_address=f"{node.ip}:{node.port}",
+                message=f"Error during registration: {str(e)}",
+            )
+
+    async def _handle_telemetry_failure(
+        self, hotkey, tee_address, node, routing_table, message
+    ):
+        """Handle cases where telemetry fails or returns invalid data."""
+        logger.warn(
+            f"Telemetry failed for hotkey {hotkey} - {tee_address} - {node.ip}:{node.port}"
+        )
+        # Add to unregistered TEEs table for tracking
+        await self.validator.routing_table.add_unregistered_tee(
+            address=tee_address, hotkey=hotkey
+        )
+
+        logger.info(f"Added to unregistered TEEs: {tee_address} for hotkey {hotkey}")
+        self.errors_storage.add_error(
+            hotkey=hotkey,
+            tee_address=tee_address,
+            miner_address=f"{node.ip}:{node.port}",
+            message=message,
+        )
+
+    async def _register_tee_address(
+        self,
+        routing_table,
+        hotkey,
+        node,
+        tee_address,
+        worker_id,
+        worker_hotkey,
+        verified_entries,
+    ):
+        """Register a TEE address and send notifications."""
+        routing_table.register_worker(hotkey=hotkey, worker_id=worker_id)
+        routing_table.add_miner_address(hotkey, node.node_id, tee_address, worker_id)
+
+        logger.debug(f"Added TEE address {tee_address} for hotkey {hotkey}")
+
+        # Mark this entry as verified in this update cycle
+        verified_entries.add((hotkey, tee_address))
+
+        # Check if this is a new worker registration (worker_id was not set before)
+        if worker_hotkey is None:
+            logger.info(f"New worker registration: {worker_id} for hotkey {hotkey}")
+            # Send notification about new worker registration
+            await self.send_custom_message(
+                hotkey,
+                f"New worker registration: Your worker ID {worker_id} has been registered for the first time with hotkey {hotkey}",
+            )
+
+        # Send notification to miner about successful registration
+        await self.send_custom_message(
+            hotkey,
+            f"Your TEE address {tee_address} has been successfully registered with worker_id {worker_id} for hotkey {hotkey}",
+        )
+
+    async def _cleanup_unverified_entries(
+        self, routing_table, current_entries_set, verified_entries
+    ):
+        """Clean up entries that weren't verified in this cycle and are older than a reasonable threshold."""
+        unverified_entries = current_entries_set - verified_entries
+        if unverified_entries:
+            logger.info(
+                f"Performing graceful cleanup of {len(unverified_entries)} unverified entries"
+            )
+            for hotkey, address in unverified_entries:
+                try:
+                    # Get the entry details to check age
+                    current_tees = routing_table.get_miner_addresses(hotkey=hotkey)
+                    for addr, worker_id in current_tees if current_tees else []:
+                        if addr == address:
+                            # Check if the entry is at least 4 hours old
+                            timestamp_str = routing_table.get_address_timestamp(address)
+                            if timestamp_str:
+                                try:
+                                    # Parse SQLite timestamp format
+                                    entry_time = datetime.fromisoformat(
+                                        timestamp_str.replace(" ", "T")
+                                    )
+                                    current_time = datetime.now()
+                                    age_hours = (
+                                        current_time - entry_time
+                                    ).total_seconds() / 3600
+
+                                    if age_hours >= 4:
+                                        routing_table.remove_miner_address_by_address(
+                                            address
+                                        )
+                                        logger.info(
+                                            f"Cleaned up unverified entry (age: {age_hours:.1f}h): "
+                                            f"{hotkey} - {address}"
+                                        )
+                                    else:
+                                        logger.debug(
+                                            f"Skipping cleanup of recent entry (age: {age_hours:.1f}h): "
+                                            f"{hotkey} - {address}"
+                                        )
+                                except Exception as parse_error:
+                                    logger.error(
+                                        f"Error parsing timestamp for {address}: {parse_error}"
+                                    )
+                            break
+                except Exception as e:
+                    logger.error(
+                        f"Error during cleanup of {hotkey} - {address}: {str(e)}"
+                    )
+
+    async def _cleanup_unregistered_tees(self, routing_table):
+        """Clean up any unregistered TEEs that are now in the routing table."""
+        try:
+            # Get all registered addresses
+            registered_addrs = routing_table.get_all_addresses()
+
+            # Get current list of unregistered TEE addresses
+            unregistered_addrs = routing_table.get_all_unregistered_tee_addresses()
+
+            # Check which addresses should be removed from unregistered list
+            cleaned_count = 0
+
+            for address in registered_addrs:
+                if address in unregistered_addrs:
+                    # This address was previously unregistered but is now registered
+                    routing_table.remove_unregistered_tee(address)
+                    cleaned_count += 1
+
+            if cleaned_count > 0:
+                logger.info(
+                    f"Cleaned {cleaned_count} addresses from unregistered TEEs that are now registered"
+                )
+        except Exception as e:
+            logger.error(f"Error cleaning up unregistered TEEs: {str(e)}")
 
     async def send_score_report(
         self, node_hotkey: str, score: float, telemetry: NodeData

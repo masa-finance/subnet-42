@@ -102,18 +102,14 @@ class Validator:
                 self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
             )
 
-            asyncio.create_task(
-                self.background_tasks.update_tee(
-                    int(os.getenv("UPDATE_TEE_CADENCE_SECONDS", "120"))
-                )
-            )
+            # 1 hour
+            asyncio.create_task(self.background_tasks.update_tee(60 * 60))
 
             # Start telemetry collection in its own task
-            asyncio.create_task(
-                self.background_tasks.telemetry_loop(
-                    int(os.getenv("TELEMETRY_COLLECTION_CADENCE_SECONDS", "120"))
-                )
-            )
+            asyncio.create_task(self.background_tasks.telemetry_loop(60 * 10))
+
+            # Start process monitoring cleanup task
+            asyncio.create_task(self.background_tasks.monitor_cleanup_loop())
 
         except Exception as e:
             logger.error(f"Failed to start validator: {str(e)}")

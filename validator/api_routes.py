@@ -160,6 +160,15 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add process monitoring endpoint
+        self.app.add_api_route(
+            "/monitoring/processes",
+            self.monitor_processes,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
         # Add HTML page routes
         self.app.add_api_route(
             "/errors",
@@ -590,4 +599,28 @@ class ValidatorAPI:
             return data
         except Exception as e:
             logger.error(f"Failed to get score simulation data: {str(e)}")
+            return {"error": str(e)}
+
+    async def monitor_processes(self):
+        """Return process monitoring statistics for background tasks"""
+        try:
+            # Get process monitoring data from the background tasks
+            if hasattr(self.validator, "background_tasks") and hasattr(
+                self.validator.background_tasks, "process_monitor"
+            ):
+                monitor = self.validator.background_tasks.process_monitor
+                return monitor.get_all_processes_statistics()
+            else:
+                return {
+                    "error": "Process monitoring not available",
+                    "monitoring_status": {
+                        "active_executions": 0,
+                        "monitored_processes": [],
+                        "max_records_per_process": 0,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    "processes": {},
+                }
+        except Exception as e:
+            logger.error(f"Failed to get process monitoring data: {str(e)}")
             return {"error": str(e)}

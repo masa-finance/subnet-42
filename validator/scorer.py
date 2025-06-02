@@ -328,8 +328,14 @@ class NodeDataScorer:
         logger.info(f"  - Total nodes processed: {len(nodes)}")
         logger.info(f"  - Successful telemetry collections: {successful_nodes}")
         logger.info(f"  - Failed telemetry collections: {failed_nodes}")
-        rate = f"  - Success rate: {successful_nodes/len(nodes)*100:.2f}%"
-        logger.info(rate)
+
+        # Fix division by zero error
+        if len(nodes) > 0:
+            rate = f"  - Success rate: {successful_nodes/len(nodes)*100:.2f}%"
+            logger.info(rate)
+        else:
+            logger.info("  - Success rate: N/A (no nodes to process)")
+
         logger.info(f"Completed telemetry fetching for {len(node_data)} nodes")
 
         self.telemetry = node_data
