@@ -23,7 +23,7 @@ class BackgroundTasks:
         """
         self.validator = validator
         self.scorer = validator.scorer  # Initialize the scorer from the validator
-        self.process_monitor = ProcessMonitor(max_records_per_process=200)
+        self.process_monitor = ProcessMonitor(max_records_per_process=256)
 
     async def sync_loop(self, cadence_seconds) -> None:
         """Background task to sync metagraph"""

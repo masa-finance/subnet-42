@@ -169,6 +169,24 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add NATS monitoring endpoint
+        self.app.add_api_route(
+            "/monitoring/nats",
+            self.monitor_nats_publishing,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add weights monitoring endpoint
+        self.app.add_api_route(
+            "/monitoring/weights",
+            self.monitor_weights_setting,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
         # Add HTML page routes
         self.app.add_api_route(
             "/errors",
@@ -623,4 +641,79 @@ class ValidatorAPI:
                 }
         except Exception as e:
             logger.error(f"Failed to get process monitoring data: {str(e)}")
+            return {"error": str(e)}
+
+    async def monitor_nats_publishing(self):
+        """Return NATS monitoring statistics for publishing"""
+        try:
+            # Get process monitoring data from the background tasks
+            if hasattr(self.validator, "background_tasks") and hasattr(
+                self.validator.background_tasks, "process_monitor"
+            ):
+                monitor = self.validator.background_tasks.process_monitor
+                # Get statistics specifically for send_connected_nodes process
+                nats_stats = monitor.get_process_statistics("send_connected_nodes")
+                return {
+                    "monitoring_status": {
+                        "active_executions": len(
+                            [
+                                exec_id
+                                for exec_id, exec_data in monitor.current_executions.items()
+                                if exec_data.get("process_name")
+                                == "send_connected_nodes"
+                            ]
+                        ),
+                        "process_name": "send_connected_nodes",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    "nats_publishing": nats_stats,
+                }
+            else:
+                return {
+                    "error": "Process monitoring not available",
+                    "monitoring_status": {
+                        "active_executions": 0,
+                        "process_name": "send_connected_nodes",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                }
+        except Exception as e:
+            logger.error(f"Failed to get NATS monitoring data: {str(e)}")
+            return {"error": str(e)}
+
+    async def monitor_weights_setting(self):
+        """Return weights monitoring statistics for setting"""
+        try:
+            # Get process monitoring data from the background tasks
+            if hasattr(self.validator, "background_tasks") and hasattr(
+                self.validator.background_tasks, "process_monitor"
+            ):
+                monitor = self.validator.background_tasks.process_monitor
+                # Get statistics specifically for set_weights process
+                weights_stats = monitor.get_process_statistics("set_weights")
+                return {
+                    "monitoring_status": {
+                        "active_executions": len(
+                            [
+                                exec_id
+                                for exec_id, exec_data in monitor.current_executions.items()
+                                if exec_data.get("process_name") == "set_weights"
+                            ]
+                        ),
+                        "process_name": "set_weights",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    "weights_setting": weights_stats,
+                }
+            else:
+                return {
+                    "error": "Process monitoring not available",
+                    "monitoring_status": {
+                        "active_executions": 0,
+                        "process_name": "set_weights",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                }
+        except Exception as e:
+            logger.error(f"Failed to get weights monitoring data: {str(e)}")
             return {"error": str(e)}
