@@ -92,33 +92,78 @@ class WeightsManager:
         error_quality_weight: float = 0.4,
     ):
         """
-        Initialize the WeightsManager with a validator instance and configurable scoring weights.
+        Initialize the WeightsManager with a validator instance and
+        configurable scoring weights.
 
-        :param validator: The validator instance to be used for weight calculations.
-        :param tweets_weight: Weight for Twitter tweets returned component (default: 0.6)
-        :param error_quality_weight: Weight for error quality score component (default: 0.4)
+        :param validator: The validator instance to be used for weight
+                         calculations.
+        :param tweets_weight: Weight for Twitter tweets returned component
+                             (default: 0.6)
+        :param error_quality_weight: Weight for error quality score component
+                                    (default: 0.4)
         """
         self.validator = validator
         self.tweets_weight = tweets_weight
         self.error_quality_weight = error_quality_weight
+        logger.info(
+            f"Initialized WeightsManager with weights: "
+            f"tweets={tweets_weight}, error_quality={error_quality_weight}"
+        )
 
         # Ensure weights sum to 1.0
         total_weight = self.tweets_weight + self.error_quality_weight
         if abs(total_weight - 1.0) > 1e-6:
             raise ValueError(f"Scoring weights must sum to 1.0, got {total_weight}")
 
-    def _get_delta_node_data(self) -> List[NodeData]:
+    def _convert_timestamp_to_int(self, timestamp) -> int:
+        """
+        Convert timestamp to integer, handling both string and integer formats.
+
+        :param timestamp: Timestamp value (string, int, or other)
+        :return: Integer timestamp (unix seconds) or 0 if conversion fails
+        """
+        if isinstance(timestamp, int):
+            return timestamp
+        elif isinstance(timestamp, str):
+            if timestamp == "" or timestamp is None:
+                return 0
+            try:
+                # Try to parse as datetime string first
+                from datetime import datetime
+
+                dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                return int(dt.timestamp())
+            except ValueError:
+                try:
+                    # Try to parse as integer string
+                    return int(timestamp)
+                except ValueError:
+                    logger.warning(
+                        f"Failed to convert timestamp '{timestamp}' to int, using 0"
+                    )
+                    return 0
+        else:
+            logger.warning(f"Unexpected timestamp type {type(timestamp)}, using 0")
+            return 0
+
+    def _get_delta_node_data(self, telemetry_data: List[NodeData]) -> List[NodeData]:
         """
         Get telemetry data and calculate deltas between latest and oldest
         records. When TEE restarts are detected (negative deltas), split into
         chunks and sum them.
 
+        :param telemetry_data: List of NodeData objects from get_all_telemetry()
         :return: List of NodeData objects containing delta values.
         """
         delta_node_data = []
-        hotkeys_to_score = (
-            self.validator.telemetry_storage.get_all_hotkeys_with_telemetry()
-        )
+
+        # Group telemetry data by hotkey
+        telemetry_by_hotkey = {}
+        for record in telemetry_data:
+            if record.hotkey not in telemetry_by_hotkey:
+                telemetry_by_hotkey[record.hotkey] = []
+            telemetry_by_hotkey[record.hotkey].append(record)
+
         # Get all hotkeys from metagraph to ensure we include those without
         # telemetry
         all_hotkeys = []
@@ -127,33 +172,29 @@ class WeightsManager:
             hotkey = node_data.hotkey
             all_hotkeys.append((node_data.node_id, hotkey))
 
+        print(f"all  hotkeys: {all_hotkeys}")
         # Process hotkeys with telemetry data
         processed_hotkeys = set()
-        for hotkey in hotkeys_to_score:
-            node_telemetry = self.validator.telemetry_storage.get_telemetry_by_hotkey(
-                hotkey
-            )
-            logger.info(f"Showing {hotkey} telemetry: {len(node_telemetry)} records")
-            logger.debug(node_telemetry)
+        for hotkey, telemetry_list in telemetry_by_hotkey.items():
+            if len(telemetry_list) >= 2:
+                # Sort telemetry by timestamp (convert to int first)
+                sorted_telemetry = sorted(
+                    telemetry_list,
+                    key=lambda x: self._convert_timestamp_to_int(x.timestamp),
+                )
 
-            if len(node_telemetry) >= 2:
-                # Sort by timestamp ascending (oldest first)
-                sorted_telemetry = sorted(node_telemetry, key=lambda x: x.timestamp)
-
-                # Find chunks separated by TEE restarts
+                # Initialize data for chunk processing
                 chunks = []
                 current_chunk = [sorted_telemetry[0]]
 
+                # Detect TEE restarts by looking for negative deltas
                 for i in range(1, len(sorted_telemetry)):
                     current = sorted_telemetry[i]
                     previous = sorted_telemetry[i - 1]
 
-                    # Check if this record represents a reset
-                    # (any key metric decreased)
+                    # Check for TEE restart indicators (negative deltas in counters)
                     is_reset = (
-                        current.boot_time < previous.boot_time
-                        or current.last_operation_time < (previous.last_operation_time)
-                        or current.twitter_auth_errors < (previous.twitter_auth_errors)
+                        current.twitter_auth_errors < previous.twitter_auth_errors
                         or current.twitter_errors < previous.twitter_errors
                         or current.twitter_ratelimit_errors
                         < previous.twitter_ratelimit_errors
@@ -210,8 +251,12 @@ class WeightsManager:
                         last = chunk[-1]
 
                         # Calculate time span for this chunk
-                        # (timestamps are in seconds)
-                        chunk_time_span = last.timestamp - first.timestamp
+                        # (timestamps are in seconds, convert to int first)
+                        first_timestamp = self._convert_timestamp_to_int(
+                            first.timestamp
+                        )
+                        last_timestamp = self._convert_timestamp_to_int(last.timestamp)
+                        chunk_time_span = last_timestamp - first_timestamp
                         total_time_span_seconds += chunk_time_span
 
                         # Calculate deltas within this chunk
@@ -265,7 +310,7 @@ class WeightsManager:
                     hotkey=hotkey,
                     uid=latest.uid,
                     worker_id=latest.worker_id,
-                    timestamp=latest.timestamp,
+                    timestamp=self._convert_timestamp_to_int(latest.timestamp),
                     boot_time=total_boot_time_delta,
                     last_operation_time=total_last_operation_time_delta,
                     current_time=latest.current_time,
@@ -492,6 +537,62 @@ class WeightsManager:
 
         return uids, weights
 
+    async def get_priority_miners_by_score(
+        self, delta_node_data: List[NodeData], simulation: bool = False
+    ) -> List[str]:
+        """
+        Get list of worker IPs sorted by score (highest first) based on scoring
+        from calculate_weights.
+
+        :param delta_node_data: List of NodeData objects with delta values
+        :param simulation: Whether this is a simulation run
+        :return: List of worker IP addresses sorted by score (highest first)
+        """
+        # Get the scores from calculate_weights
+        uids, weights = await self.calculate_weights(delta_node_data, simulation)
+
+        if not uids or not weights:
+            logger.warning("No scores available for priority miners")
+            return []
+
+        # Create UID to score mapping
+        uid_to_score = dict(zip(uids, weights))
+
+        # Get all addresses with hotkeys from routing table
+        addresses_with_hotkeys = (
+            self.validator.routing_table.get_all_addresses_with_hotkeys()
+        )
+
+        # Create list of (address, score) tuples for addresses that have scores
+        address_scores = []
+        for hotkey, address, worker_id in addresses_with_hotkeys:
+            try:
+                # Get UID for this hotkey
+                node_uid = self.validator.metagraph.nodes[hotkey].node_id
+                if node_uid in uid_to_score:
+                    score = uid_to_score[node_uid]
+                    address_scores.append((address, score))
+                    logger.debug(
+                        f"Address {address} (hotkey {hotkey[:10]}...) score: {score:.4f}"
+                    )
+            except KeyError:
+                logger.debug(f"Hotkey {hotkey} not found in metagraph, skipping")
+                continue
+
+        # Sort by score descending (highest scores first)
+        address_scores.sort(key=lambda x: x[1], reverse=True)
+
+        # Extract just the addresses in priority order
+        priority_addresses = [address for address, score in address_scores]
+
+        logger.info(
+            f"Generated priority miners list with {len(priority_addresses)} addresses"
+        )
+        if priority_addresses:
+            logger.debug(f"Top 3 priority miners: {priority_addresses[:3]}")
+
+        return priority_addresses
+
     async def set_weights(self) -> None:
         """
         Set weights for nodes on the blockchain, ensuring the minimum interval between updates is respected.
@@ -563,7 +664,9 @@ class WeightsManager:
                 logger.info("Wait period complete")
 
             logger.debug("Calculating weights")
-            data_to_score = self._get_delta_node_data()
+
+            telemetry = self.validator.telemetry_storage.get_all_telemetry()
+            data_to_score = self._get_delta_node_data(telemetry)
             uids, scores = await self.calculate_weights(data_to_score)
 
             for attempt in range(3):
