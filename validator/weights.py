@@ -414,73 +414,176 @@ class WeightsManager:
 
         :param node_data: List of NodeData objects containing node information.
         """
-        logger.info("Starting weight setting process")
+        # Get process monitor from background tasks
+        process_monitor = getattr(self.validator, "background_tasks", None)
+        if process_monitor:
+            process_monitor = getattr(process_monitor, "process_monitor", None)
 
-        logger.debug("Refreshing substrate connection")
-        self.validator.substrate = interface.get_substrate(
-            subtensor_address=self.validator.substrate.url
-        )
+        execution_id = None
 
-        logger.debug("Getting validator node ID")
-        validator_node_id = self.validator.metagraph.nodes[
-            self.validator.keypair.ss58_address
-        ].node_id
+        try:
+            # Start monitoring for this weight setting
+            if process_monitor:
+                execution_id = process_monitor.start_process("set_weights")
 
-        logger.debug(f"Validator node ID: {validator_node_id}")
+            logger.info("Starting weight setting process")
 
-        logger.debug("Checking blocks since last update")
-        blocks_since_update = weights.blocks_since_last_update(
-            self.validator.substrate, self.validator.netuid, validator_node_id
-        )
-        min_interval = weights.min_interval_to_set_weights(
-            self.validator.substrate, self.validator.netuid
-        )
+            logger.debug("Refreshing substrate connection")
+            self.validator.substrate = interface.get_substrate(
+                subtensor_address=self.validator.substrate.url
+            )
 
-        logger.info(f"Blocks since last update: {blocks_since_update}")
-        logger.info(f"Minimum interval required: {min_interval}")
+            logger.debug("Getting validator node ID")
+            validator_node_id = self.validator.metagraph.nodes[
+                self.validator.keypair.ss58_address
+            ].node_id
 
-        if blocks_since_update is not None and blocks_since_update < min_interval:
-            wait_blocks = min_interval - blocks_since_update
-            wait_seconds = wait_blocks * 12
-            logger.info(f"Need to wait {wait_seconds} seconds before setting weights")
-            await asyncio.sleep(wait_seconds)
-            logger.info("Wait period complete")
+            logger.debug(f"Validator node ID: {validator_node_id}")
 
-        logger.debug("Calculating weights")
-        data_to_score = self._get_delta_node_data()
-        uids, scores = await self.calculate_weights(data_to_score)
+            logger.debug("Checking blocks since last update")
+            blocks_since_update = weights.blocks_since_last_update(
+                self.validator.substrate, self.validator.netuid, validator_node_id
+            )
+            min_interval = weights.min_interval_to_set_weights(
+                self.validator.substrate, self.validator.netuid
+            )
 
-        for attempt in range(3):
-            logger.info(f"Setting weights attempt {attempt + 1}/3")
-            try:
-                success = weights.set_node_weights(
-                    substrate=self.validator.substrate,
-                    keypair=self.validator.keypair,
-                    node_ids=uids,
-                    node_weights=scores,
-                    netuid=self.validator.netuid,
-                    validator_node_id=validator_node_id,
-                    version_key=version_numerical,
-                    wait_for_inclusion=False,
-                    wait_for_finalization=False,
+            logger.info(f"Blocks since last update: {blocks_since_update}")
+            logger.info(f"Minimum interval required: {min_interval}")
+
+            if blocks_since_update is not None and blocks_since_update < min_interval:
+                wait_blocks = min_interval - blocks_since_update
+                wait_seconds = wait_blocks * 12
+                logger.info(
+                    f"Need to wait {wait_seconds} seconds before setting weights"
                 )
 
-                if success:
+                # Update metrics for waiting execution
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=0,
+                        additional_metrics={
+                            "skipped": True,
+                            "reason": "min_interval_not_met",
+                            "wait_seconds": wait_seconds,
+                            "blocks_since_update": blocks_since_update,
+                            "min_interval": min_interval,
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
 
-                    logger.debug(f"UIDS: {uids}")
-                    logger.debug(f"Scores: {scores}")
-                    logger.info("✅ Successfully set weights!")
-                    return
-                else:
-                    logger.error(f"❌ Failed to set weights on attempt {attempt + 1}")
+                await asyncio.sleep(wait_seconds)
+                logger.info("Wait period complete")
+
+            logger.debug("Calculating weights")
+            data_to_score = self._get_delta_node_data()
+            uids, scores = await self.calculate_weights(data_to_score)
+
+            for attempt in range(3):
+                logger.info(f"Setting weights attempt {attempt + 1}/3")
+                try:
+                    success = weights.set_node_weights(
+                        substrate=self.validator.substrate,
+                        keypair=self.validator.keypair,
+                        node_ids=uids,
+                        node_weights=scores,
+                        netuid=self.validator.netuid,
+                        validator_node_id=validator_node_id,
+                        version_key=version_numerical,
+                        wait_for_inclusion=False,
+                        wait_for_finalization=False,
+                    )
+
+                    if success:
+                        logger.debug(f"UIDS: {uids}")
+                        logger.debug(f"Scores: {scores}")
+                        logger.info("✅ Successfully set weights!")
+
+                        # Update metrics for successful execution
+                        if execution_id and process_monitor:
+                            process_monitor.update_metrics(
+                                execution_id,
+                                nodes_processed=len(uids),
+                                successful_nodes=len(uids),
+                                failed_nodes=0,
+                                additional_metrics={
+                                    "uids": (
+                                        uids.copy()
+                                        if hasattr(uids, "copy")
+                                        else list(uids)
+                                    ),
+                                    "scores": (
+                                        scores.copy()
+                                        if hasattr(scores, "copy")
+                                        else list(scores)
+                                    ),
+                                    "attempts": attempt + 1,
+                                    "validator_node_id": validator_node_id,
+                                    "total_nodes_scored": len(data_to_score),
+                                },
+                            )
+                            process_monitor.end_process(execution_id)
+                            execution_id = None
+                        return
+                    else:
+                        logger.error(
+                            f"❌ Failed to set weights on attempt {attempt + 1}"
+                        )
+                        if attempt < 2:  # Don't sleep on last attempt
+                            logger.debug("Waiting 10 seconds before next attempt")
+                            await asyncio.sleep(10)
+
+                except Exception as e:
+                    logger.error(
+                        f"Error on attempt {attempt + 1}: {str(e)}", exc_info=True
+                    )
                     if attempt < 2:  # Don't sleep on last attempt
                         logger.debug("Waiting 10 seconds before next attempt")
                         await asyncio.sleep(10)
 
-            except Exception as e:
-                logger.error(f"Error on attempt {attempt + 1}: {str(e)}", exc_info=True)
-                if attempt < 2:  # Don't sleep on last attempt
-                    logger.debug("Waiting 10 seconds before next attempt")
-                    await asyncio.sleep(10)
+            logger.error("Failed to set weights after all attempts")
 
-        logger.error("Failed to set weights after all attempts")
+            # Update metrics for failed execution
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=len(uids) if uids else 0,
+                    successful_nodes=0,
+                    failed_nodes=len(uids) if uids else 0,
+                    errors=["Failed to set weights after all attempts"],
+                    additional_metrics={
+                        "uids": (
+                            uids.copy()
+                            if uids and hasattr(uids, "copy")
+                            else list(uids) if uids else []
+                        ),
+                        "scores": (
+                            scores.copy()
+                            if scores and hasattr(scores, "copy")
+                            else list(scores) if scores else []
+                        ),
+                        "attempts": 3,
+                        "validator_node_id": validator_node_id,
+                        "total_nodes_scored": (
+                            len(data_to_score) if data_to_score else 0
+                        ),
+                    },
+                )
+                process_monitor.end_process(execution_id)
+
+        except Exception as e:
+            # Handle any unexpected errors
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=0,
+                    successful_nodes=0,
+                    failed_nodes=0,
+                    errors=[str(e)],
+                    additional_metrics={"unexpected_error": str(e)},
+                )
+                process_monitor.end_process(execution_id)
+            raise
