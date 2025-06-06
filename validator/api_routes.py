@@ -186,6 +186,15 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add NATS trigger endpoint
+        self.app.add_api_route(
+            "/trigger/nats/send-connected-nodes",
+            self.trigger_send_connected_nodes,
+            methods=["POST"],
+            tags=["trigger"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
         # Add weights monitoring endpoint
         self.app.add_api_route(
             "/monitoring/weights",
@@ -697,6 +706,35 @@ class ValidatorAPI:
         except Exception as e:
             logger.error(f"Failed to get NATS monitoring data: {str(e)}")
             return {"error": str(e)}
+
+    async def trigger_send_connected_nodes(self):
+        """Trigger NATS send_connected_nodes process"""
+        try:
+            # Check if the validator has a NATSPublisher
+            if hasattr(self.validator, "NATSPublisher"):
+                # Call the send_connected_nodes method directly
+                await self.validator.NATSPublisher.send_connected_nodes()
+
+                return {
+                    "success": True,
+                    "message": "NATS send_connected_nodes process triggered successfully",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "NATSPublisher not available",
+                    "timestamp": datetime.now().isoformat(),
+                }
+        except Exception as e:
+            logger.error(
+                f"Failed to trigger NATS send_connected_nodes process: {str(e)}"
+            )
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
 
     async def monitor_weights_setting(self):
         """Return weights monitoring statistics for setting"""
