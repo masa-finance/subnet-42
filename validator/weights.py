@@ -90,6 +90,7 @@ class WeightsManager:
         validator: "Validator",
         tweets_weight: float = 0.6,
         error_quality_weight: float = 0.4,
+        error_rate_threshold: float = 10.0,
     ):
         """
         Initialize the WeightsManager with a validator instance and
@@ -101,13 +102,17 @@ class WeightsManager:
                              (default: 0.6)
         :param error_quality_weight: Weight for error quality score component
                                     (default: 0.4)
+        :param error_rate_threshold: Maximum errors per hour allowed before
+                                   scoring 0 (default: 10.0)
         """
         self.validator = validator
         self.tweets_weight = tweets_weight
         self.error_quality_weight = error_quality_weight
+        self.error_rate_threshold = error_rate_threshold
         logger.info(
             f"Initialized WeightsManager with weights: "
-            f"tweets={tweets_weight}, error_quality={error_quality_weight}"
+            f"tweets={tweets_weight}, error_quality={error_quality_weight}, "
+            f"error_rate_threshold={error_rate_threshold}"
         )
 
         # Ensure weights sum to 1.0
@@ -471,6 +476,23 @@ class WeightsManager:
 
         error_rates_per_hour = np.array(error_rates_per_hour)
 
+        # Apply error rate threshold filter - mark nodes exceeding threshold
+        logger.debug(
+            f"Applying error rate threshold filter: {self.error_rate_threshold} errors/hour"
+        )
+        threshold_exceeded_mask = error_rates_per_hour > self.error_rate_threshold
+        exceeded_count = np.sum(threshold_exceeded_mask)
+
+        if exceeded_count > 0:
+            logger.info(
+                f"Found {exceeded_count} nodes exceeding error rate threshold of {self.error_rate_threshold} errors/hour"
+            )
+            for idx, node in enumerate(delta_node_data):
+                if threshold_exceeded_mask[idx]:
+                    logger.debug(
+                        f"Node {node.hotkey} exceeds threshold with {error_rates_per_hour[idx]:.2f} errors/hour"
+                    )
+
         # Convert error rates to quality scores (inverse relationship)
         # Replace infinite values with the maximum finite value + 1
         max_finite_error_rate = (
@@ -504,21 +526,44 @@ class WeightsManager:
                     uid = self.validator.metagraph.nodes[node.hotkey].node_id
 
                 if uid is not None:
-                    # Combine scores with configurable weights
-                    score = float(
+                    # First calculate the base score with configurable weights
+                    base_score = float(
                         tweets[idx] * self.tweets_weight
                         + error_quality_scores[idx] * self.error_quality_weight
                     )
+
+                    # Apply error rate threshold penalty
+                    if threshold_exceeded_mask[idx]:
+                        # Calculate percentage exceedance
+                        error_rate = error_rates_per_hour[idx]
+                        percentage_exceedance = (
+                            error_rate - self.error_rate_threshold
+                        ) / self.error_rate_threshold
+                        # Cap penalty at 100% (score becomes 0)
+                        penalty_factor = min(1.0, percentage_exceedance)
+                        # Apply penalty to base score
+                        score = base_score * (1 - penalty_factor)
+
+                        logger.debug(
+                            f"Node {node.hotkey} (UID {uid}) penalized: "
+                            f"error_rate={error_rate:.2f}, threshold={self.error_rate_threshold}, "
+                            f"exceedance={percentage_exceedance:.2%}, penalty={penalty_factor:.2%}, "
+                            f"base_score={base_score:.4f}, final_score={score:.4f}"
+                        )
+                    else:
+                        # No penalty applied
+                        score = base_score
+                        logger.debug(
+                            f"Node {node.hotkey} (UID {uid}) score: {score:.4f} "
+                            f"(tweets: {tweets[idx]:.3f} * {self.tweets_weight}, "
+                            f"error_quality: {error_quality_scores[idx]:.3f} * "
+                            f"{self.error_quality_weight})"
+                        )
+
                     miner_scores[uid] = score
 
                     await self.validator.node_manager.send_score_report(
                         node.hotkey, score, node
-                    )
-                    logger.debug(
-                        f"Node {node.hotkey} (UID {uid}) score: {score:.4f} "
-                        f"(tweets: {tweets[idx]:.3f} * {self.tweets_weight}, "
-                        f"error_quality: {error_quality_scores[idx]:.3f} * "
-                        f"{self.error_quality_weight})"
                     )
             except KeyError:
                 logger.error(
