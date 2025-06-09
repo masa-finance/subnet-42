@@ -120,14 +120,6 @@ class ValidatorAPI:
         )
 
         self.app.add_api_route(
-            "/monitor/telemetry/all",
-            self.monitor_all_telemetry,
-            methods=["GET"],
-            tags=["monitoring"],
-            dependencies=[Depends(api_key_dependency)],
-        )
-
-        self.app.add_api_route(
             "/monitor/telemetry/{hotkey}",
             self.monitor_telemetry_by_hotkey,
             methods=["GET"],
@@ -199,15 +191,6 @@ class ValidatorAPI:
         self.app.add_api_route(
             "/monitoring/weights",
             self.monitor_weights_setting,
-            methods=["GET"],
-            tags=["monitoring"],
-            dependencies=[Depends(api_key_dependency)],
-        )
-
-        # Add priority miners monitoring endpoint
-        self.app.add_api_route(
-            "/monitoring/priority-miners",
-            self.monitor_priority_miners_publishing,
             methods=["GET"],
             tags=["monitoring"],
             dependencies=[Depends(api_key_dependency)],
@@ -771,80 +754,4 @@ class ValidatorAPI:
                 }
         except Exception as e:
             logger.error(f"Failed to get weights monitoring data: {str(e)}")
-            return {"error": str(e)}
-
-    async def monitor_priority_miners_publishing(self):
-        """Return priority miners monitoring statistics for publishing"""
-        try:
-            # Get process monitoring data from the background tasks
-            if hasattr(self.validator, "background_tasks") and hasattr(
-                self.validator.background_tasks, "process_monitor"
-            ):
-                monitor = self.validator.background_tasks.process_monitor
-                # Get statistics specifically for priority miners process
-                priority_miners_stats = monitor.get_process_statistics(
-                    "send_priority_miners"
-                )
-                return {
-                    "monitoring_status": {
-                        "active_executions": len(
-                            [
-                                exec_id
-                                for exec_id, exec_data in monitor.current_executions.items()
-                                if exec_data.get("process_name")
-                                == "send_priority_miners"
-                            ]
-                        ),
-                        "process_name": "send_priority_miners",
-                        "timestamp": datetime.now().isoformat(),
-                    },
-                    "priority_miners_publishing": priority_miners_stats,
-                }
-            else:
-                return {
-                    "error": "Process monitoring not available",
-                    "monitoring_status": {
-                        "active_executions": 0,
-                        "process_name": "send_priority_miners",
-                        "timestamp": datetime.now().isoformat(),
-                    },
-                }
-        except Exception as e:
-            logger.error(f"Failed to get priority miners monitoring data: {str(e)}")
-            return {"error": str(e)}
-
-    async def monitor_all_telemetry(self):
-        """Return all telemetry data"""
-        try:
-            telemetry_data = self.validator.telemetry_storage.get_all_telemetry()
-
-            # Convert NodeData objects to dictionaries
-            telemetry_dict_list = []
-            for data in telemetry_data:
-                telemetry_dict = {
-                    "hotkey": data.hotkey,
-                    "uid": data.uid,
-                    "timestamp": data.timestamp,
-                    "boot_time": data.boot_time,
-                    "last_operation_time": data.last_operation_time,
-                    "current_time": data.current_time,
-                    "twitter_auth_errors": data.twitter_auth_errors,
-                    "twitter_errors": data.twitter_errors,
-                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
-                    "twitter_returned_other": data.twitter_returned_other,
-                    "twitter_returned_profiles": data.twitter_returned_profiles,
-                    "twitter_returned_tweets": data.twitter_returned_tweets,
-                    "twitter_scrapes": data.twitter_scrapes,
-                    "web_errors": data.web_errors,
-                    "web_success": data.web_success,
-                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
-                }
-                telemetry_dict_list.append(telemetry_dict)
-
-            return {
-                "count": len(telemetry_dict_list),
-                "telemetry_data": telemetry_dict_list,
-            }
-        except Exception as e:
-            logger.error(f"Failed to get all telemetry data: {str(e)}")
             return {"error": str(e)}

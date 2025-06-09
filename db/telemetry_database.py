@@ -140,15 +140,3 @@ class TelemetryDatabase:
             )
             conn.commit()
             return cursor.rowcount  # Return the number of rows deleted
-
-    def get_all_telemetry(self):
-        """Retrieve all telemetry data from the database."""
-        with self.lock, sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT * FROM telemetry
-                """
-            )
-            telemetry_data = cursor.fetchall()
-            return telemetry_data
