@@ -83,35 +83,3 @@ class TelemetryStorage:
         except sqlite3.Error as e:
             logger.error(f"Failed to delete telemetry for hotkey {hotkey}: {e}")
             return 0
-
-    def get_all_telemetry(self):
-        """
-        Retrieve all telemetry data from the database.
-        Returns a list of NodeData objects.
-        """
-        try:
-            telemetry_data = self.db.get_all_telemetry()
-            return [
-                NodeData(
-                    hotkey=row[0],
-                    uid=row[1],
-                    boot_time=row[3],
-                    last_operation_time=row[4],
-                    current_time=row[5],
-                    twitter_auth_errors=row[6],
-                    twitter_errors=row[7],
-                    twitter_ratelimit_errors=row[8],
-                    twitter_returned_other=row[9],
-                    twitter_returned_profiles=row[10],
-                    twitter_returned_tweets=row[11],
-                    twitter_scrapes=row[12],
-                    web_errors=row[13],
-                    web_success=row[14],
-                    timestamp=row[2],
-                    worker_id=row[15] if len(row) > 15 else None,
-                )
-                for row in telemetry_data
-            ]
-        except sqlite3.Error as e:
-            logger.error(f"Failed to retrieve all telemetry: {e}")
-            return []

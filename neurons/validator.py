@@ -292,9 +292,7 @@ class Validator:
         logger.info("Starting score simulation based on recent telemetry...")
         try:
             # 1. Fetch the latest telemetry data for reachable nodes
-            telemetry = self.telemetry_storage.get_all_telemetry()
-
-            data_to_score = self.weights_manager._get_delta_node_data(telemetry)
+            data_to_score = self.weights_manager._get_delta_node_data()
 
             logger.info(f"Data to score: {data_to_score}")
             # 2. Calculate weights (scores) using the WeightsManager

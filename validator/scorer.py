@@ -265,7 +265,7 @@ class NodeDataScorer:
                         hotkey=hotkey,
                         uid=uid,
                         worker_id=worker_id,
-                        timestamp=int(time.time()),
+                        timestamp="",
                         boot_time=telemetry_result.get("boot_time", 0),
                         last_operation_time=telemetry_result.get(
                             "last_operation_time", 0

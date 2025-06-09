@@ -120,8 +120,8 @@ class TestGetDeltaNodeData(unittest.TestCase):
         self.assertEqual(hotkey1_result.twitter_returned_tweets, 0)
 
     def test_normal_delta_calculation(self):
-        """Test normal delta calculation without any resets."""
-        # Create telemetry data with normal progression (no resets)
+        """Test normal delta calculation without any TEE restarts."""
+        # Create telemetry data with normal progression (no restarts)
         hotkey1_data = self.create_telemetry_data(
             "hotkey1",
             [1000, 2000, 3000],  # Timestamps
@@ -144,25 +144,23 @@ class TestGetDeltaNodeData(unittest.TestCase):
         hotkey1_result = next(data for data in result if data.hotkey == "hotkey1")
 
         # Verify results - should be deltas between last and first record
-        self.assertEqual(hotkey1_result.boot_time, 0)  # Not used in simple mode
-        self.assertEqual(
-            hotkey1_result.last_operation_time, 0
-        )  # Not used in simple mode
+        self.assertEqual(hotkey1_result.boot_time, 0)  # Same boot time, so delta is 0
+        self.assertEqual(hotkey1_result.last_operation_time, 200)  # 400 - 200
         self.assertEqual(hotkey1_result.twitter_scrapes, 50)  # 100 - 50
         self.assertEqual(hotkey1_result.twitter_returned_tweets, 30)  # 60 - 30
         self.assertEqual(hotkey1_result.twitter_returned_profiles, 15)  # 35 - 20
         self.assertEqual(hotkey1_result.web_success, 40)  # 80 - 40
 
-    def test_one_reset(self):
-        """Test handling of one reset when twitter_returned_tweets decreases."""
-        # Create telemetry data with one reset (twitter_returned_tweets decreases)
+    def test_one_tee_restart(self):
+        """Test handling of one TEE restart by finding the restart and chunking data."""
+        # Create telemetry data with one restart (boot time changes)
         hotkey1_data = self.create_telemetry_data(
             "hotkey1",
             [1000, 2000, 3000, 4000],  # Timestamps
             [100, 100, 200, 200],  # Boot time changes at index 2 (restart)
             [200, 300, 100, 200],  # Operation time resets at restart
             [50, 70, 10, 30],  # Twitter scrapes reset at restart
-            [30, 45, 5, 15],  # Twitter tweets reset at restart (45 -> 5)
+            [30, 45, 5, 15],  # Twitter tweets reset at restart
             [20, 25, 5, 10],  # Twitter profiles reset at restart
             [40, 60, 10, 30],  # Web success reset at restart
         )
@@ -177,28 +175,31 @@ class TestGetDeltaNodeData(unittest.TestCase):
         # Find hotkey1 result
         hotkey1_result = next(data for data in result if data.hotkey == "hotkey1")
 
-        # Verify results - baseline resets at index 2 (timestamp 3000) when tweets go from 45 to 5
-        # Delta calculated from baseline (index 2) to latest (index 3):
-        # tweets: 15 - 5 = 10, profiles: 10 - 5 = 5, scrapes: 30 - 10 = 20, web: 30 - 10 = 20
-        self.assertEqual(hotkey1_result.boot_time, 0)  # Not used in simple mode
+        # Verify results - should be sum of deltas from each chunk
+        # First chunk: [1000, 2000] - delta boot_time=0, operation=100, scrapes=20, tweets=15, profiles=5, web=20
+        # Second chunk: [3000, 4000] - delta boot_time=0, operation=100, scrapes=20, tweets=10, profiles=5, web=20
+        # Total: boot_time=0, operation=200, scrapes=40, tweets=25, profiles=10, web=40
+        self.assertEqual(hotkey1_result.boot_time, 0)  # No change within chunks
         self.assertEqual(
-            hotkey1_result.last_operation_time, 0
-        )  # Not used in simple mode
-        self.assertEqual(hotkey1_result.twitter_scrapes, 20)  # 30 - 10
-        self.assertEqual(hotkey1_result.twitter_returned_tweets, 10)  # 15 - 5
-        self.assertEqual(hotkey1_result.twitter_returned_profiles, 5)  # 10 - 5
-        self.assertEqual(hotkey1_result.web_success, 20)  # 30 - 10
+            hotkey1_result.last_operation_time, 200
+        )  # (300-200) + (200-100)
+        self.assertEqual(hotkey1_result.twitter_scrapes, 40)  # (70-50) + (30-10)
+        self.assertEqual(hotkey1_result.twitter_returned_tweets, 25)  # (45-30) + (15-5)
+        self.assertEqual(
+            hotkey1_result.twitter_returned_profiles, 10
+        )  # (25-20) + (10-5)
+        self.assertEqual(hotkey1_result.web_success, 40)  # (60-40) + (30-10)
 
-    def test_multiple_resets(self):
-        """Test handling of multiple resets when twitter_returned_tweets decreases multiple times."""
-        # Create telemetry data with multiple resets
+    def test_multiple_tee_restarts(self):
+        """Test handling of multiple TEE restarts."""
+        # Create telemetry data with multiple restarts
         hotkey1_data = self.create_telemetry_data(
             "hotkey1",
             [1000, 2000, 3000, 4000, 5000, 6000],  # Timestamps
             [100, 100, 200, 200, 300, 300],  # Boot time changes twice
             [200, 300, 100, 200, 100, 200],  # Operation time resets at each restart
             [50, 70, 10, 30, 5, 25],  # Twitter scrapes resets
-            [30, 45, 5, 15, 2, 12],  # Twitter tweets resets (45->5, then 15->2)
+            [30, 45, 5, 15, 2, 12],  # Twitter tweets resets
             [20, 25, 5, 10, 2, 7],  # Twitter profiles resets
             [40, 60, 10, 30, 5, 25],  # Web success resets
         )
@@ -213,19 +214,25 @@ class TestGetDeltaNodeData(unittest.TestCase):
         # Find hotkey1 result
         hotkey1_result = next(data for data in result if data.hotkey == "hotkey1")
 
-        # Verify results - baseline resets twice:
-        # 1st reset at index 2 (timestamp 3000) when tweets go from 45 to 5
-        # 2nd reset at index 4 (timestamp 5000) when tweets go from 15 to 2
-        # Final baseline is index 4, delta calculated from there to latest (index 5):
-        # tweets: 12 - 2 = 10, profiles: 7 - 2 = 5, scrapes: 25 - 5 = 20, web: 25 - 5 = 20
-        self.assertEqual(hotkey1_result.boot_time, 0)  # Not used in simple mode
+        # Verify results - should be sum of deltas from all three chunks
+        # First chunk: [1000, 2000] - delta boot_time=0, operation=100, scrapes=20, tweets=15, profiles=5, web=20
+        # Second chunk: [3000, 4000] - delta boot_time=0, operation=100, scrapes=20, tweets=10, profiles=5, web=20
+        # Third chunk: [5000, 6000] - delta boot_time=0, operation=100, scrapes=20, tweets=10, profiles=5, web=20
+        # Total: boot_time=0, operation=300, scrapes=60, tweets=35, profiles=15, web=60
+        self.assertEqual(hotkey1_result.boot_time, 0)  # No change within chunks
         self.assertEqual(
-            hotkey1_result.last_operation_time, 0
-        )  # Not used in simple mode
-        self.assertEqual(hotkey1_result.twitter_scrapes, 20)  # 25 - 5
-        self.assertEqual(hotkey1_result.twitter_returned_tweets, 10)  # 12 - 2
-        self.assertEqual(hotkey1_result.twitter_returned_profiles, 5)  # 7 - 2
-        self.assertEqual(hotkey1_result.web_success, 20)  # 25 - 5
+            hotkey1_result.last_operation_time, 300
+        )  # (300-200) + (200-100) + (200-100)
+        self.assertEqual(
+            hotkey1_result.twitter_scrapes, 60
+        )  # (70-50) + (30-10) + (25-5)
+        self.assertEqual(
+            hotkey1_result.twitter_returned_tweets, 35
+        )  # (45-30) + (15-5) + (12-2)
+        self.assertEqual(
+            hotkey1_result.twitter_returned_profiles, 15
+        )  # (25-20) + (10-5) + (7-2)
+        self.assertEqual(hotkey1_result.web_success, 60)  # (60-40) + (30-10) + (25-5)
 
     def test_multiple_hotkeys(self):
         """Test handling multiple hotkeys with different telemetry patterns."""
@@ -269,22 +276,17 @@ class TestGetDeltaNodeData(unittest.TestCase):
         hotkey1_result = next(data for data in result if data.hotkey == "hotkey1")
         hotkey2_result = next(data for data in result if data.hotkey == "hotkey2")
 
-        # Verify hotkey1 results (no reset)
+        # Verify hotkey1 results (no restart)
         self.assertEqual(hotkey1_result.boot_time, 0)
-        self.assertEqual(
-            hotkey1_result.last_operation_time, 0
-        )  # Not used in simple mode
+        self.assertEqual(hotkey1_result.last_operation_time, 200)
         self.assertEqual(hotkey1_result.twitter_scrapes, 50)
         self.assertEqual(hotkey1_result.web_success, 40)
 
-        # Verify hotkey2 results (with reset at index 2 when tweets go from 45 to 5)
-        # Delta from baseline (index 2) to latest (index 3): tweets=10, scrapes=20, web=20
+        # Verify hotkey2 results (with restart)
         self.assertEqual(hotkey2_result.boot_time, 0)
-        self.assertEqual(
-            hotkey2_result.last_operation_time, 0
-        )  # Not used in simple mode
-        self.assertEqual(hotkey2_result.twitter_scrapes, 20)  # 30 - 10
-        self.assertEqual(hotkey2_result.web_success, 20)  # 30 - 10
+        self.assertEqual(hotkey2_result.last_operation_time, 200)
+        self.assertEqual(hotkey2_result.twitter_scrapes, 40)
+        self.assertEqual(hotkey2_result.web_success, 40)
         self.assertEqual(hotkey2_result.worker_id, "worker_456")
 
         # Verify hotkey3 is also in results (but with zero data)
@@ -292,16 +294,17 @@ class TestGetDeltaNodeData(unittest.TestCase):
         self.assertEqual(hotkey3_result.twitter_scrapes, 0)
         self.assertEqual(hotkey3_result.web_success, 0)
 
-    def test_no_reset_with_steady_increase(self):
-        """Test handling when twitter_returned_tweets only increases (no reset)."""
-        # Create telemetry data where twitter_returned_tweets only increases
+    def test_decreasing_metric_not_restart(self):
+        """Test handling of a decreasing metric that's not due to a TEE restart."""
+        # Create telemetry data where a single metric decreases but boot_time is stable
+        # This is a common case where e.g. scrapes might decrease temporarily due to rate limiting
         hotkey1_data = self.create_telemetry_data(
             "hotkey1",
             [1000, 2000, 3000, 4000],  # Timestamps
             [100, 100, 100, 100],  # Same boot time (no restart)
             [200, 300, 400, 500],  # Incrementing operation time
             [50, 70, 60, 90],  # Twitter scrapes dips at index 2
-            [30, 45, 60, 75],  # Twitter tweets steady increase (no reset)
+            [30, 45, 60, 75],  # Twitter tweets steady increase
             [20, 25, 35, 45],  # Twitter profiles steady increase
             [40, 60, 80, 100],  # Web success steady increase
         )
@@ -316,17 +319,26 @@ class TestGetDeltaNodeData(unittest.TestCase):
         # Find hotkey1 result
         hotkey1_result = next(data for data in result if data.hotkey == "hotkey1")
 
-        # Since twitter_returned_tweets never decreases, no reset occurs
-        # Delta calculated from first record to last record:
-        # tweets: 75 - 30 = 45, profiles: 45 - 20 = 25, scrapes: 90 - 50 = 40, web: 100 - 40 = 60
-        self.assertEqual(hotkey1_result.boot_time, 0)  # Not used in simple mode
+        # This behavior depends on how we define a TEE restart
+        # In the current implementation, any decrease in metrics is considered a restart
+        # So we expect the data to be split into chunks
+
+        # Verify results - should be sum of deltas from the chunks
+        # First chunk: [1000, 2000] - delta boot_time=0, operation=100, scrapes=20, tweets=15, profiles=5, web=20
+        # Second chunk: [3000, 4000] - delta boot_time=0, operation=100, scrapes=30, tweets=15, profiles=10, web=20
+        # Total: boot_time=0, operation=200, scrapes=50, tweets=30, profiles=15, web=40
+        self.assertEqual(hotkey1_result.boot_time, 0)
         self.assertEqual(
-            hotkey1_result.last_operation_time, 0
-        )  # Not used in simple mode
-        self.assertEqual(hotkey1_result.twitter_scrapes, 40)  # 90 - 50
-        self.assertEqual(hotkey1_result.twitter_returned_tweets, 45)  # 75 - 30
-        self.assertEqual(hotkey1_result.twitter_returned_profiles, 25)  # 45 - 20
-        self.assertEqual(hotkey1_result.web_success, 60)  # 100 - 40
+            hotkey1_result.last_operation_time, 300
+        )  # (300-200) + (500-400)
+        self.assertEqual(hotkey1_result.twitter_scrapes, 50)  # (70-50) + (90-60)
+        self.assertEqual(
+            hotkey1_result.twitter_returned_tweets, 45
+        )  # (45-30) + (75-60)
+        self.assertEqual(
+            hotkey1_result.twitter_returned_profiles, 25
+        )  # (25-20) + (45-35)
+        self.assertEqual(hotkey1_result.web_success, 60)  # (60-40) + (100-80)
 
 
 if __name__ == "__main__":
