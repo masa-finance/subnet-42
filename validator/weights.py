@@ -88,9 +88,9 @@ class WeightsManager:
     def __init__(
         self,
         validator: "Validator",
-        tweets_weight: float = 0.6,
-        error_quality_weight: float = 0.4,
-        error_rate_threshold: float = 20.0,
+        tweets_weight: float = 0.1,
+        error_quality_weight: float = 0.9,
+        error_rate_threshold: float = 10.0,
     ):
         """
         Initialize the WeightsManager with a validator instance and
@@ -122,7 +122,9 @@ class WeightsManager:
 
     def _convert_timestamp_to_int(self, timestamp) -> int:
         """
-        Convert timestamp to integer, handling both string and integer formats.
+        Get telemetry data and calculate deltas using simple reset logic.
+        If twitter_returned_tweets decreases, reset baseline to that point.
+        Calculate delta from most recent reset point to latest value.
 
         :param timestamp: Timestamp value (string, int, or other)
         :return: Integer timestamp (unix seconds) or 0 if conversion fails
@@ -188,166 +190,110 @@ class WeightsManager:
                     key=lambda x: self._convert_timestamp_to_int(x.timestamp),
                 )
 
-                # Initialize data for chunk processing
-                chunks = []
-                current_chunk = [sorted_telemetry[0]]
+                # Find baseline: start from first record, reset on any decrease
+                baseline_record = sorted_telemetry[0]
+                latest_record = sorted_telemetry[-1]
 
-                # Detect TEE restarts by looking for negative deltas
-                for i in range(1, len(sorted_telemetry)):
-                    current = sorted_telemetry[i]
-                    previous = sorted_telemetry[i - 1]
-
-                    # Check for TEE restart indicators (negative deltas in counters)
-                    is_reset = (
-                        current.twitter_auth_errors < previous.twitter_auth_errors
-                        or current.twitter_errors < previous.twitter_errors
-                        or current.twitter_ratelimit_errors
-                        < previous.twitter_ratelimit_errors
-                        or current.twitter_returned_other
-                        < previous.twitter_returned_other
-                        or current.twitter_returned_profiles
-                        < previous.twitter_returned_profiles
-                        or current.twitter_returned_tweets
-                        < previous.twitter_returned_tweets
-                        or current.twitter_scrapes < previous.twitter_scrapes
-                        or current.web_errors < previous.web_errors
-                        or current.web_success < previous.web_success
-                    )
-
-                    if is_reset:
-                        # This record starts a new chunk
-                        logger.info(
-                            f"Detected TEE restart for {hotkey} at record {i}. "
-                            f"Starting new telemetry chunk."
+                # Walk through records, reset baseline on any decrease in
+                # twitter_returned_tweets
+                for record in sorted_telemetry[1:]:
+                    if (
+                        record.twitter_returned_tweets
+                        < baseline_record.twitter_returned_tweets
+                    ):
+                        baseline_record = record  # Reset baseline to this record
+                        logger.debug(
+                            f"Reset baseline for {hotkey} at timestamp "
+                            f"{record.timestamp}"
                         )
-                        chunks.append(current_chunk)
-                        current_chunk = [current]
-                    else:
-                        # Add to current chunk
-                        current_chunk.append(current)
 
-                # Add the last chunk
-                if current_chunk:
-                    chunks.append(current_chunk)
+                # Calculate simple delta from final baseline to latest
+                delta_boot_time = 0  # Not used in simple mode
+                delta_last_operation_time = 0  # Not used in simple mode
+                delta_twitter_returned_other = 0  # Not used in simple mode
 
-                logger.info(
-                    f"Split {hotkey} telemetry into {len(chunks)} chunks "
-                    f"due to TEE restarts"
+                # Calculate time span for this chunk
+                # (timestamps are in seconds, convert to int first)
+                first_timestamp = self._convert_timestamp_to_int(
+                    baseline_record.timestamp
+                )
+                last_timestamp = self._convert_timestamp_to_int(latest_record.timestamp)
+                total_time_span_seconds = last_timestamp - first_timestamp
+
+                delta_twitter_auth_errors = max(
+                    0,
+                    latest_record.twitter_auth_errors
+                    - baseline_record.twitter_auth_errors,
+                )
+                delta_twitter_errors = max(
+                    0, latest_record.twitter_errors - baseline_record.twitter_errors
+                )
+                delta_twitter_ratelimit_errors = max(
+                    0,
+                    latest_record.twitter_ratelimit_errors
+                    - baseline_record.twitter_ratelimit_errors,
                 )
 
-                # Calculate deltas for each chunk and sum them
-                total_boot_time_delta = 0
-                total_last_operation_time_delta = 0
-                total_twitter_auth_errors_delta = 0
-                total_twitter_errors_delta = 0
-                total_twitter_ratelimit_errors_delta = 0
-                total_twitter_returned_other_delta = 0
-                total_twitter_returned_profiles_delta = 0
-                total_twitter_returned_tweets_delta = 0
-                total_twitter_scrapes_delta = 0
-                total_web_errors_delta = 0
-                total_web_success_delta = 0
-                total_time_span_seconds = 0
+                delta_twitter_returned_profiles = max(
+                    0,
+                    latest_record.twitter_returned_profiles
+                    - baseline_record.twitter_returned_profiles,
+                )
+                delta_twitter_returned_tweets = max(
+                    0,
+                    latest_record.twitter_returned_tweets
+                    - baseline_record.twitter_returned_tweets,
+                )
 
-                for chunk in chunks:
-                    if len(chunk) >= 2:
-                        # Get first and last record in this chunk
-                        first = chunk[0]
-                        last = chunk[-1]
-
-                        # Calculate time span for this chunk
-                        # (timestamps are in seconds, convert to int first)
-                        first_timestamp = self._convert_timestamp_to_int(
-                            first.timestamp
-                        )
-                        last_timestamp = self._convert_timestamp_to_int(last.timestamp)
-                        chunk_time_span = last_timestamp - first_timestamp
-                        total_time_span_seconds += chunk_time_span
-
-                        # Calculate deltas within this chunk
-                        # (all should be non-negative)
-                        total_boot_time_delta += max(
-                            0, last.boot_time - first.boot_time
-                        )
-                        total_last_operation_time_delta += max(
-                            0, last.last_operation_time - first.last_operation_time
-                        )
-                        total_twitter_auth_errors_delta += max(
-                            0, last.twitter_auth_errors - first.twitter_auth_errors
-                        )
-                        total_twitter_errors_delta += max(
-                            0, last.twitter_errors - first.twitter_errors
-                        )
-                        total_twitter_ratelimit_errors_delta += max(
-                            0,
-                            last.twitter_ratelimit_errors
-                            - first.twitter_ratelimit_errors,
-                        )
-                        total_twitter_returned_other_delta += max(
-                            0,
-                            last.twitter_returned_other - first.twitter_returned_other,
-                        )
-                        total_twitter_returned_profiles_delta += max(
-                            0,
-                            last.twitter_returned_profiles
-                            - first.twitter_returned_profiles,
-                        )
-                        total_twitter_returned_tweets_delta += max(
-                            0,
-                            last.twitter_returned_tweets
-                            - first.twitter_returned_tweets,
-                        )
-                        total_twitter_scrapes_delta += max(
-                            0, last.twitter_scrapes - first.twitter_scrapes
-                        )
-                        total_web_errors_delta += max(
-                            0, last.web_errors - first.web_errors
-                        )
-                        total_web_success_delta += max(
-                            0, last.web_success - first.web_success
-                        )
+                delta_twitter_scrapes = max(
+                    0, latest_record.twitter_scrapes - baseline_record.twitter_scrapes
+                )
+                delta_web_errors = max(
+                    0, latest_record.web_errors - baseline_record.web_errors
+                )
+                delta_web_success = max(
+                    0, latest_record.web_success - baseline_record.web_success
+                )
 
                 # Use the latest record's data for non-delta fields
                 latest = sorted_telemetry[-1]
 
-                # Create delta data with summed values
+                # Create delta data
                 delta_data = NodeData(
                     hotkey=hotkey,
                     uid=latest.uid,
                     worker_id=latest.worker_id,
                     timestamp=self._convert_timestamp_to_int(latest.timestamp),
-                    boot_time=total_boot_time_delta,
-                    last_operation_time=total_last_operation_time_delta,
+                    boot_time=delta_boot_time,
+                    last_operation_time=delta_last_operation_time,
                     current_time=latest.current_time,
-                    twitter_auth_errors=total_twitter_auth_errors_delta,
-                    twitter_errors=total_twitter_errors_delta,
-                    twitter_ratelimit_errors=(total_twitter_ratelimit_errors_delta),
-                    twitter_returned_other=total_twitter_returned_other_delta,
-                    twitter_returned_profiles=(total_twitter_returned_profiles_delta),
-                    twitter_returned_tweets=total_twitter_returned_tweets_delta,
-                    twitter_scrapes=total_twitter_scrapes_delta,
-                    web_errors=total_web_errors_delta,
-                    web_success=total_web_success_delta,
+                    twitter_auth_errors=delta_twitter_auth_errors,
+                    twitter_errors=delta_twitter_errors,
+                    twitter_ratelimit_errors=delta_twitter_ratelimit_errors,
+                    twitter_returned_other=delta_twitter_returned_other,
+                    twitter_returned_profiles=delta_twitter_returned_profiles,
+                    twitter_returned_tweets=delta_twitter_returned_tweets,
+                    twitter_scrapes=delta_twitter_scrapes,
+                    web_errors=delta_web_errors,
+                    web_success=delta_web_success,
                 )
 
                 # Add custom attributes for error rate calculation
                 delta_data.time_span_seconds = total_time_span_seconds
                 delta_data.total_errors = (
-                    total_twitter_auth_errors_delta
-                    + total_twitter_errors_delta
-                    + total_twitter_ratelimit_errors_delta
-                    + total_web_errors_delta
+                    delta_twitter_auth_errors
+                    + delta_twitter_errors
+                    + delta_twitter_ratelimit_errors
                 )
 
                 delta_node_data.append(delta_data)
                 processed_hotkeys.add(hotkey)
                 logger.debug(
-                    f"Calculated aggregate deltas for {hotkey} across "
-                    f"{len(chunks)} chunks: {delta_data}"
+                    f"Delta for {hotkey}: tweets={delta_twitter_returned_tweets}"
                 )
             else:
                 logger.debug(
-                    f"Not enough telemetry data for {hotkey} to calculate " f"deltas"
+                    f"Not enough telemetry data for {hotkey} to calculate deltas"
                 )
                 # Find UID for this hotkey
                 uid = next((uid for uid, hk in all_hotkeys if hk == hotkey), 0)

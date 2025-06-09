@@ -112,7 +112,7 @@ class BackgroundTasks:
                 await self.validator.NATSPublisher.send_connected_nodes()
 
                 # Also publish priority miners sorted by score
-                await self.validator.NATSPublisher.send_priority_miners()
+                # await self.validator.NATSPublisher.send_priority_miners() # NOT YET
 
                 # Update metrics for successful cycle
                 if execution_id:
