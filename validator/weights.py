@@ -90,7 +90,7 @@ class WeightsManager:
         validator: "Validator",
         tweets_weight: float = 0.6,
         error_quality_weight: float = 0.4,
-        error_rate_threshold: float = 10.0,
+        error_rate_threshold: float = 20.0,
     ):
         """
         Initialize the WeightsManager with a validator instance and
