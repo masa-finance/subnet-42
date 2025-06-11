@@ -88,8 +88,8 @@ class WeightsManager:
     def __init__(
         self,
         validator: "Validator",
-        tweets_weight: float = 0.2,
-        error_quality_weight: float = 0.8,
+        tweets_weight: float = 0.6,
+        error_quality_weight: float = 0.4,
         error_rate_threshold: float = 10.0,
     ):
         """
@@ -529,15 +529,22 @@ class WeightsManager:
         return uids, weights
 
     async def get_priority_miners_by_score(
-        self, delta_node_data: List[NodeData], simulation: bool = False
+        self,
+        delta_node_data: List[NodeData],
+        simulation: bool = False,
+        list_size: int = 20000,
     ) -> List[str]:
         """
-        Get list of worker IPs sorted by score (highest first) based on scoring
-        from calculate_weights.
+        Get weighted list of worker IPs based on score where better scoring
+        miners appear more frequently in the list. This allows consumers to
+        do random picks while maintaining probability bias towards better
+        miners.
 
         :param delta_node_data: List of NodeData objects with delta values
         :param simulation: Whether this is a simulation run
-        :return: List of worker IP addresses sorted by score (highest first)
+        :param list_size: Size of the weighted list to generate (default: 100)
+        :return: Weighted list of worker IP addresses where better miners
+                appear more frequently
         """
         # Get the scores from calculate_weights
         uids, weights = await self.calculate_weights(delta_node_data, simulation)
@@ -564,25 +571,64 @@ class WeightsManager:
                     score = uid_to_score[node_uid]
                     address_scores.append((address, score))
                     logger.debug(
-                        f"Address {address} (hotkey {hotkey[:10]}...) score: {score:.4f}"
+                        f"Address {address} (hotkey {hotkey[:10]}...) "
+                        f"score: {score:.4f}"
                     )
             except KeyError:
                 logger.debug(f"Hotkey {hotkey} not found in metagraph, skipping")
                 continue
 
-        # Sort by score descending (highest scores first)
-        address_scores.sort(key=lambda x: x[1], reverse=True)
+        if not address_scores:
+            logger.warning("No addresses with valid scores found")
+            return []
 
-        # Extract just the addresses in priority order
-        priority_addresses = [address for address, score in address_scores]
+        # Extract addresses and scores
+        addresses = [item[0] for item in address_scores]
+        scores = np.array([item[1] for item in address_scores])
+
+        # Normalize scores to create probabilities
+        # (handle negative or zero scores)
+        min_score = np.min(scores)
+        if min_score < 0:
+            # Shift all scores to be positive
+            scores = scores - min_score + 0.001  # small epsilon to avoid zeros
+
+        # Add small epsilon to avoid division by zero
+        scores = scores + 0.001
+
+        # Create probability weights (higher scores get higher probability)
+        probabilities = scores / np.sum(scores)
+
+        # Generate weighted list by sampling with replacement
+        try:
+            weighted_addresses = np.random.choice(
+                addresses, size=list_size, p=probabilities, replace=True
+            ).tolist()
+        except ValueError as e:
+            logger.error(f"Error creating weighted list: {e}")
+            # Fallback to sorted list if weighted sampling fails
+            address_scores.sort(key=lambda x: x[1], reverse=True)
+            weighted_addresses = [address for address, score in address_scores]
+            logger.warning("Falling back to sorted list due to weighted sampling error")
 
         logger.info(
-            f"Generated priority miners list with {len(priority_addresses)} addresses"
+            f"Generated weighted priority miners list with "
+            f"{len(weighted_addresses)} addresses"
         )
-        if priority_addresses:
-            logger.debug(f"Top 3 priority miners: {priority_addresses[:3]}")
 
-        return priority_addresses
+        # Log distribution statistics
+        unique_addresses = list(set(weighted_addresses))
+        logger.info(f"Unique addresses in weighted list: {len(unique_addresses)}")
+
+        if unique_addresses:
+            # Show top addresses and their frequency
+            from collections import Counter
+
+            address_counts = Counter(weighted_addresses)
+            top_addresses = address_counts.most_common(3)
+            logger.debug(f"Top 3 most frequent addresses: {top_addresses}")
+
+        return weighted_addresses
 
     async def set_weights(self) -> None:
         """

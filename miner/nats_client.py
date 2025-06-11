@@ -76,7 +76,7 @@ class NatsClient:
 
             try:
                 nats_message = json.dumps({"PriorityMiners": priority_miners})
-                channel_name = os.getenv("TEE_NATS_PRIORITY_CHANNEL", "priority-miners")
+                channel_name = os.getenv("TEE_NATS_PRIORITY_CHANNEL", "miners")
 
                 logger.info(
                     f"Publishing priority miners to channel '{channel_name}' with "
