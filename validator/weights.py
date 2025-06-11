@@ -88,8 +88,8 @@ class WeightsManager:
     def __init__(
         self,
         validator: "Validator",
-        tweets_weight: float = 0.1,
-        error_quality_weight: float = 0.9,
+        tweets_weight: float = 0.2,
+        error_quality_weight: float = 0.8,
         error_rate_threshold: float = 10.0,
     ):
         """
