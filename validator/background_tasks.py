@@ -109,7 +109,10 @@ class BackgroundTasks:
                     self.validator.routing_table_updating = False
 
                 # Now safely publish to NATS with consistent data
-                await self.validator.NATSPublisher.send_connected_nodes()
+                # await self.validator.NATSPublisher.send_connected_nodes()
+
+                # Also publish priority miners sorted by score
+                await self.validator.NATSPublisher.send_priority_miners()
 
                 # Update metrics for successful cycle
                 if execution_id:

@@ -120,6 +120,14 @@ class ValidatorAPI:
         )
 
         self.app.add_api_route(
+            "/monitor/telemetry/all",
+            self.monitor_all_telemetry,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
             "/monitor/telemetry/{hotkey}",
             self.monitor_telemetry_by_hotkey,
             methods=["GET"],
@@ -191,6 +199,24 @@ class ValidatorAPI:
         self.app.add_api_route(
             "/monitoring/weights",
             self.monitor_weights_setting,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add priority miners monitoring endpoint
+        self.app.add_api_route(
+            "/monitoring/priority-miners",
+            self.monitor_priority_miners_publishing,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add weighted priority miners list endpoint
+        self.app.add_api_route(
+            "/monitor/priority-miners-list",
+            self.get_weighted_priority_miners_list,
             methods=["GET"],
             tags=["monitoring"],
             dependencies=[Depends(api_key_dependency)],
@@ -754,4 +780,196 @@ class ValidatorAPI:
                 }
         except Exception as e:
             logger.error(f"Failed to get weights monitoring data: {str(e)}")
+            return {"error": str(e)}
+
+    async def monitor_priority_miners_publishing(self):
+        """Return priority miners monitoring statistics for publishing"""
+        try:
+            # Get process monitoring data from the background tasks
+            if hasattr(self.validator, "background_tasks") and hasattr(
+                self.validator.background_tasks, "process_monitor"
+            ):
+                monitor = self.validator.background_tasks.process_monitor
+                # Get statistics specifically for priority miners process
+                priority_miners_stats = monitor.get_process_statistics(
+                    "send_priority_miners"
+                )
+                return {
+                    "monitoring_status": {
+                        "active_executions": len(
+                            [
+                                exec_id
+                                for exec_id, exec_data in monitor.current_executions.items()
+                                if exec_data.get("process_name")
+                                == "send_priority_miners"
+                            ]
+                        ),
+                        "process_name": "send_priority_miners",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    "priority_miners_publishing": priority_miners_stats,
+                }
+            else:
+                return {
+                    "error": "Process monitoring not available",
+                    "monitoring_status": {
+                        "active_executions": 0,
+                        "process_name": "send_priority_miners",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                }
+        except Exception as e:
+            logger.error(f"Failed to get priority miners monitoring data: {str(e)}")
+            return {"error": str(e)}
+
+    async def get_weighted_priority_miners_list(self, list_size: int = 100):
+        """
+        Return weighted priority miners list where better scoring miners
+        appear more frequently in a deterministic way.
+
+        :param list_size: Size of the weighted list to generate (default: 100)
+        :return: Deterministic weighted list of miner IP addresses
+        """
+        try:
+            # Get telemetry data
+            telemetry = self.validator.telemetry_storage.get_all_telemetry()
+            data_to_score = self.validator.weights_manager._get_delta_node_data(
+                telemetry
+            )
+
+            # Get the scores from calculate_weights
+            uids, weights = await self.validator.weights_manager.calculate_weights(
+                data_to_score, simulation=False
+            )
+
+            if not uids or not weights:
+                logger.warning("No scores available for priority miners")
+                return {"error": "No scores available"}
+
+            # Create UID to score mapping
+            uid_to_score = dict(zip(uids, weights))
+
+            # Get addresses with hotkeys for mapping
+            addresses_with_hotkeys = (
+                self.validator.routing_table.get_all_addresses_with_hotkeys()
+            )
+
+            # Create mapping from address to hotkey
+            address_to_hotkey = {
+                address: hotkey for hotkey, address, worker_id in addresses_with_hotkeys
+            }
+
+            # Create list of (address, score, hotkey) tuples for addresses that have scores
+            address_scores = []
+            for hotkey, address, worker_id in addresses_with_hotkeys:
+                try:
+                    # Get UID for this hotkey
+                    node_uid = self.validator.metagraph.nodes[hotkey].node_id
+                    if node_uid in uid_to_score:
+                        score = uid_to_score[node_uid]
+                        address_scores.append((address, score, hotkey))
+                except KeyError:
+                    logger.debug(f"Hotkey {hotkey} not found in metagraph, skipping")
+                    continue
+
+            if not address_scores:
+                logger.warning("No addresses with valid scores found")
+                return {"error": "No addresses with valid scores found"}
+
+            # Sort by score (highest first) for deterministic ordering
+            address_scores.sort(key=lambda x: x[1], reverse=True)
+
+            # Create deterministic weighted distribution
+            weighted_list = []
+            total_score = sum(score for _, score, _ in address_scores)
+
+            if total_score > 0:
+                # Calculate how many times each address should appear
+                for address, score, hotkey in address_scores:
+                    # Calculate frequency based on score proportion
+                    frequency = max(1, int((score / total_score) * list_size))
+                    # Add this address 'frequency' times to the list
+                    weighted_list.extend([address] * frequency)
+
+                # If we have too few items, add top miners until we reach list_size
+                while len(weighted_list) < list_size:
+                    # Add the best miners in order until we reach desired size
+                    for address, _, _ in address_scores:
+                        if len(weighted_list) >= list_size:
+                            break
+                        weighted_list.append(address)
+
+                # If we have too many items, trim to exact size
+                weighted_list = weighted_list[:list_size]
+            else:
+                # Fallback: equal distribution if no positive scores
+                for i in range(list_size):
+                    idx = i % len(address_scores)
+                    weighted_list.append(address_scores[idx][0])
+
+            # Calculate statistics
+            unique_addresses = list(set(weighted_list))
+
+            from collections import Counter
+
+            address_counts = Counter(weighted_list)
+            top_addresses = [
+                {
+                    "address": addr,
+                    "frequency": count,
+                    "score": next(
+                        (score for a, score, _ in address_scores if a == addr), 0
+                    ),
+                    "percentage": round((count / len(weighted_list)) * 100, 1),
+                }
+                for addr, count in address_counts.most_common(5)
+            ]
+
+            return {
+                "weighted_list": weighted_list,
+                "list_size": len(weighted_list),
+                "unique_addresses": len(unique_addresses),
+                "top_addresses": top_addresses,
+                "total_addresses_available": len(address_scores),
+                "address_to_hotkey": address_to_hotkey,
+                "note": "List is deterministically weighted by score (top miners appear more frequently)",
+            }
+        except Exception as e:
+            logger.error(f"Failed to get weighted priority miners list: {str(e)}")
+            return {"error": str(e)}
+
+    async def monitor_all_telemetry(self):
+        """Return all telemetry data"""
+        try:
+            telemetry_data = self.validator.telemetry_storage.get_all_telemetry()
+
+            # Convert NodeData objects to dictionaries
+            telemetry_dict_list = []
+            for data in telemetry_data:
+                telemetry_dict = {
+                    "hotkey": data.hotkey,
+                    "uid": data.uid,
+                    "timestamp": data.timestamp,
+                    "boot_time": data.boot_time,
+                    "last_operation_time": data.last_operation_time,
+                    "current_time": data.current_time,
+                    "twitter_auth_errors": data.twitter_auth_errors,
+                    "twitter_errors": data.twitter_errors,
+                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
+                    "twitter_returned_other": data.twitter_returned_other,
+                    "twitter_returned_profiles": data.twitter_returned_profiles,
+                    "twitter_returned_tweets": data.twitter_returned_tweets,
+                    "twitter_scrapes": data.twitter_scrapes,
+                    "web_errors": data.web_errors,
+                    "web_success": data.web_success,
+                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
+                }
+                telemetry_dict_list.append(telemetry_dict)
+
+            return {
+                "count": len(telemetry_dict_list),
+                "telemetry_data": telemetry_dict_list,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get all telemetry data: {str(e)}")
             return {"error": str(e)}
