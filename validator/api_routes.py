@@ -306,6 +306,31 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add PostgreSQL telemetry endpoints
+        self.app.add_api_route(
+            "/telemetry/postgresql/all",
+            self.monitor_postgresql_telemetry,
+            methods=["GET"],
+            tags=["telemetry"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
+            "/telemetry/postgresql/stats",
+            self.monitor_postgresql_telemetry_stats,
+            methods=["GET"],
+            tags=["telemetry"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        self.app.add_api_route(
+            "/telemetry/postgresql/{hotkey}",
+            self.monitor_postgresql_telemetry_by_hotkey,
+            methods=["GET"],
+            tags=["telemetry"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
     async def healthcheck(self):
         # Implement the healthcheck logic for the validator
         return self.validator.healthcheck()
@@ -939,7 +964,7 @@ class ValidatorAPI:
             return {"error": str(e)}
 
     async def monitor_all_telemetry(self):
-        """Return all telemetry data"""
+        """Return all telemetry data from the SQLite database"""
         try:
             telemetry_data = self.validator.telemetry_storage.get_all_telemetry()
 
@@ -971,5 +996,96 @@ class ValidatorAPI:
                 "telemetry_data": telemetry_dict_list,
             }
         except Exception as e:
-            logger.error(f"Failed to get all telemetry data: {str(e)}")
+            return {"error": str(e)}
+
+    async def monitor_postgresql_telemetry(self, limit: int = 1000):
+        """Return all PostgreSQL telemetry data"""
+        try:
+            telemetry_data = (
+                self.validator.telemetry_storage.get_all_telemetry_postgresql(limit)
+            )
+
+            # Convert NodeData objects to dictionaries
+            telemetry_dict_list = []
+            for data in telemetry_data:
+                telemetry_dict = {
+                    "hotkey": data.hotkey,
+                    "uid": data.uid,
+                    "timestamp": data.timestamp,
+                    "boot_time": data.boot_time,
+                    "last_operation_time": data.last_operation_time,
+                    "current_time": data.current_time,
+                    "twitter_auth_errors": data.twitter_auth_errors,
+                    "twitter_errors": data.twitter_errors,
+                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
+                    "twitter_returned_other": data.twitter_returned_other,
+                    "twitter_returned_profiles": data.twitter_returned_profiles,
+                    "twitter_returned_tweets": data.twitter_returned_tweets,
+                    "twitter_scrapes": data.twitter_scrapes,
+                    "web_errors": data.web_errors,
+                    "web_success": data.web_success,
+                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
+                }
+                telemetry_dict_list.append(telemetry_dict)
+
+            return {
+                "count": len(telemetry_dict_list),
+                "telemetry_data": telemetry_dict_list,
+                "source": "postgresql",
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def monitor_postgresql_telemetry_stats(self):
+        """Return PostgreSQL telemetry statistics"""
+        try:
+            stats = self.validator.telemetry_storage.get_telemetry_stats_postgresql()
+            status = self.validator.telemetry_storage.check_postgresql_status()
+
+            return {
+                "postgresql_status": "connected" if status else "disconnected",
+                **stats,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def monitor_postgresql_telemetry_by_hotkey(self, hotkey: str):
+        """Return PostgreSQL telemetry data for a specific hotkey"""
+        try:
+            telemetry_data = (
+                self.validator.telemetry_storage.get_telemetry_by_hotkey_postgresql(
+                    hotkey
+                )
+            )
+
+            # Convert NodeData objects to dictionaries
+            telemetry_dict_list = []
+            for data in telemetry_data:
+                telemetry_dict = {
+                    "hotkey": data.hotkey,
+                    "uid": data.uid,
+                    "timestamp": data.timestamp,
+                    "boot_time": data.boot_time,
+                    "last_operation_time": data.last_operation_time,
+                    "current_time": data.current_time,
+                    "twitter_auth_errors": data.twitter_auth_errors,
+                    "twitter_errors": data.twitter_errors,
+                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
+                    "twitter_returned_other": data.twitter_returned_other,
+                    "twitter_returned_profiles": data.twitter_returned_profiles,
+                    "twitter_returned_tweets": data.twitter_returned_tweets,
+                    "twitter_scrapes": data.twitter_scrapes,
+                    "web_errors": data.web_errors,
+                    "web_success": data.web_success,
+                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
+                }
+                telemetry_dict_list.append(telemetry_dict)
+
+            return {
+                "hotkey": hotkey,
+                "count": len(telemetry_dict_list),
+                "telemetry_data": telemetry_dict_list,
+                "source": "postgresql",
+            }
+        except Exception as e:
             return {"error": str(e)}
