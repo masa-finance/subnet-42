@@ -532,7 +532,7 @@ class WeightsManager:
         self,
         delta_node_data: List[NodeData],
         simulation: bool = False,
-        list_size: int = 20000,
+        list_size: int = 256,
     ) -> List[str]:
         """
         Get weighted list of worker IPs based on score where better scoring
