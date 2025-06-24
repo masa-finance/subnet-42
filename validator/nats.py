@@ -13,8 +13,9 @@ class MinersNATSPublisher:
     def __init__(self, validator: "Validator"):
         self.nc = NatsClient()
         self.validator = validator
+        self.cached_addresses = []
 
-    async def send_connected_nodes(self):
+    async def send_connected_nodes(self, force=False, use_cached=False):
         # Get process monitor from background tasks
         process_monitor = getattr(self.validator, "background_tasks", None)
         if process_monitor:
@@ -28,7 +29,7 @@ class MinersNATSPublisher:
                 execution_id = process_monitor.start_process("send_connected_nodes")
 
             # Check if routing table is currently being updated
-            if getattr(self.validator, "routing_table_updating", False):
+            if not force and getattr(self.validator, "routing_table_updating", False):
                 logger.debug("Skipping NATS publish during routing table update")
 
                 # Update metrics for skipped execution
@@ -47,9 +48,14 @@ class MinersNATSPublisher:
                     process_monitor.end_process(execution_id)
                 return
 
-            # Get connected nodes from the validator using atomic method
-            routing_table = self.validator.routing_table
-            addresses = routing_table.get_all_addresses_atomic()
+            # Get addresses: either from cache or from routing table
+            if use_cached:
+                addresses = self.cached_addresses.copy()
+                logger.info(f"Using cached addresses: {len(addresses)} IPs")
+            else:
+                # Get connected nodes from the validator using atomic method
+                routing_table = self.validator.routing_table
+                addresses = routing_table.get_all_addresses_atomic()
 
             if len(addresses) == 0:
                 logger.debug("Skipping, no addresses found")
@@ -82,6 +88,11 @@ class MinersNATSPublisher:
                     await self.nc.send_connected_nodes(addresses)
                     logger.info("Successfully published to NATS")
 
+                    # Cache the addresses after successful send
+                    if not use_cached:
+                        self.cached_addresses = addresses.copy()
+                        logger.debug(f"Cached {len(addresses)} addresses")
+
                     # Update metrics for successful execution
                     if execution_id and process_monitor:
                         process_monitor.update_metrics(
@@ -93,6 +104,7 @@ class MinersNATSPublisher:
                                 "addresses": addresses.copy(),
                                 "attempts": attempt + 1,
                                 "max_retries": max_retries,
+                                "used_cached": use_cached,
                             },
                         )
                         process_monitor.end_process(execution_id)
