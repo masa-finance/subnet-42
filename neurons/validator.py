@@ -111,6 +111,9 @@ class Validator:
             # Start process monitoring cleanup task
             asyncio.create_task(self.background_tasks.monitor_cleanup_loop())
 
+            # Start cached NATS publishing task (every 5 minutes)
+            asyncio.create_task(self._cached_nats_loop())
+
         except Exception as e:
             logger.error(f"Failed to start validator: {str(e)}")
             raise
@@ -286,6 +289,19 @@ class Validator:
         except Exception as e:
             logger.error(f"Failed to generate dashboard data: {str(e)}")
             return {"error": str(e)}
+
+    async def _cached_nats_loop(self):
+        """Background task to send cached connected nodes every 5 minutes."""
+        while True:
+            try:
+                await asyncio.sleep(300)  # 5 minutes
+                logger.info("Sending cached connected nodes to NATS")
+                await self.NATSPublisher.send_connected_nodes(
+                    force=True, use_cached=True
+                )
+            except Exception as e:
+                logger.error(f"Error in cached NATS loop: {str(e)}")
+                # Continue the loop even if there's an error
 
     async def get_score_simulation_data(self):
         """Calculate simulated scores based on recently fetched telemetry data."""
