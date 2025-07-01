@@ -266,6 +266,9 @@ class PostgreSQLTelemetryDatabase:
                     logger.info("Telemetry table created successfully")
                 else:
                     logger.debug("Telemetry table exists")
+                    # Check for missing columns and add them
+                    self._ensure_required_columns(cursor)
+                    conn.commit()
         except Exception as e:
             logger.error(f"Failed to check/create telemetry table: {e}")
             raise
@@ -293,6 +296,8 @@ class PostgreSQLTelemetryDatabase:
                 web_errors INTEGER DEFAULT 0,
                 web_success INTEGER DEFAULT 0,
                 worker_id VARCHAR(255),
+                tiktok_transcription_success INTEGER DEFAULT 0,
+                tiktok_transcription_errors INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
@@ -311,6 +316,46 @@ class PostgreSQLTelemetryDatabase:
         for index_sql in indexes:
             cursor.execute(index_sql)
 
+    def _ensure_required_columns(self, cursor):
+        """Ensure all required columns exist in the telemetry table."""
+        try:
+            # Get current column names
+            cursor.execute(
+                """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'telemetry'
+                """
+            )
+            existing_columns = [row["column_name"] for row in cursor.fetchall()]
+
+            # Define required columns that might be missing
+            required_columns = [
+                ("tiktok_transcription_success", "INTEGER DEFAULT 0"),
+                ("tiktok_transcription_errors", "INTEGER DEFAULT 0"),
+            ]
+
+            # Add missing columns
+            for column_name, column_definition in required_columns:
+                if column_name not in existing_columns:
+                    logger.info(f"Adding missing column: {column_name}")
+                    cursor.execute(
+                        f"ALTER TABLE telemetry ADD COLUMN {column_name} {column_definition}"
+                    )
+
+                    # Add index for the new column
+                    index_name = f"idx_telemetry_{column_name}"
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS {index_name} ON telemetry({column_name})"
+                    )
+
+            logger.debug("Column verification completed")
+
+        except Exception as e:
+            logger.error(f"Failed to ensure required columns: {e}")
+            raise
+
     def add_telemetry(self, telemetry_data):
         """Add telemetry data to PostgreSQL database."""
         with self.lock:
@@ -326,10 +371,11 @@ class PostgreSQLTelemetryDatabase:
                                 twitter_returned_other, 
                                 twitter_returned_profiles, 
                                 twitter_returned_tweets, twitter_scrapes, 
-                                web_errors, web_success, worker_id
+                                web_errors, web_success, worker_id,
+                                tiktok_transcription_success, tiktok_transcription_errors
                             ) VALUES (
                                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                                %s, %s, %s, %s, %s
+                                %s, %s, %s, %s, %s, %s, %s
                             )
                             """,
                             (
@@ -348,6 +394,12 @@ class PostgreSQLTelemetryDatabase:
                                 telemetry_data.web_errors,
                                 telemetry_data.web_success,
                                 telemetry_data.worker_id,
+                                getattr(
+                                    telemetry_data, "tiktok_transcription_success", 0
+                                ),
+                                getattr(
+                                    telemetry_data, "tiktok_transcription_errors", 0
+                                ),
                             ),
                         )
                         conn.commit()

@@ -30,7 +30,9 @@ class TelemetryDatabase:
                     twitter_scrapes INT,
                     web_errors INT,
                     web_success INT,
-                    worker_id TEXT
+                    worker_id TEXT,
+                    tiktok_transcription_success INT DEFAULT 0,
+                    tiktok_transcription_errors INT DEFAULT 0
                 )
             """
             )
@@ -38,24 +40,30 @@ class TelemetryDatabase:
 
     def _ensure_worker_id_column(self):
         """
-        Ensure the worker_id column exists in the telemetry table.
+        Ensure required columns exist in the telemetry table.
         This handles database migrations for existing databases.
         """
         with self.lock, sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            # Check if worker_id column exists
+            # Check which columns exist
             cursor.execute("PRAGMA table_info(telemetry)")
             columns = [col[1] for col in cursor.fetchall()]
 
+            # Add missing columns
             if "worker_id" not in columns:
-                # Add the worker_id column if it doesn't exist
+                cursor.execute("ALTER TABLE telemetry ADD COLUMN worker_id TEXT")
+
+            if "tiktok_transcription_success" not in columns:
                 cursor.execute(
-                    """
-                    ALTER TABLE telemetry
-                    ADD COLUMN worker_id TEXT
-                    """
+                    "ALTER TABLE telemetry ADD COLUMN tiktok_transcription_success INT DEFAULT 0"
                 )
-                conn.commit()
+
+            if "tiktok_transcription_errors" not in columns:
+                cursor.execute(
+                    "ALTER TABLE telemetry ADD COLUMN tiktok_transcription_errors INT DEFAULT 0"
+                )
+
+            conn.commit()
 
     def add_telemetry(self, telemetry_data):
         with self.lock, sqlite3.connect(self.db_path) as conn:
@@ -65,8 +73,8 @@ class TelemetryDatabase:
                 INSERT INTO telemetry (hotkey, uid, boot_time, last_operation_time, current_time, 
                 twitter_auth_errors, twitter_errors, twitter_ratelimit_errors, twitter_returned_other, 
                 twitter_returned_profiles, twitter_returned_tweets, twitter_scrapes, web_errors, web_success,
-                worker_id) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                worker_id, tiktok_transcription_success, tiktok_transcription_errors) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     telemetry_data.hotkey,
@@ -84,6 +92,8 @@ class TelemetryDatabase:
                     telemetry_data.web_errors,
                     telemetry_data.web_success,
                     telemetry_data.worker_id,
+                    getattr(telemetry_data, "tiktok_transcription_success", 0),
+                    getattr(telemetry_data, "tiktok_transcription_errors", 0),
                 ),
             )
             conn.commit()

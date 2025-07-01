@@ -151,6 +151,12 @@ class TelemetryStorage:
                     web_success=row["web_success"],
                     timestamp=row["timestamp"],
                     worker_id=row["worker_id"],
+                    tiktok_transcription_success=row.get(
+                        "tiktok_transcription_success", 0
+                    ),
+                    tiktok_transcription_errors=row.get(
+                        "tiktok_transcription_errors", 0
+                    ),
                 )
                 for row in telemetry_data
             ]
@@ -228,6 +234,8 @@ class TelemetryStorage:
                     web_success=row[14],
                     timestamp=row[2],
                     worker_id=row[15] if len(row) > 15 else None,
+                    tiktok_transcription_success=row[16] if len(row) > 16 else 0,
+                    tiktok_transcription_errors=row[17] if len(row) > 17 else 0,
                 )
                 for row in telemetry_data
             ]
@@ -264,6 +272,12 @@ class TelemetryStorage:
                     web_success=row["web_success"],
                     timestamp=row["timestamp"],
                     worker_id=row["worker_id"],
+                    tiktok_transcription_success=row.get(
+                        "tiktok_transcription_success", 0
+                    ),
+                    tiktok_transcription_errors=row.get(
+                        "tiktok_transcription_errors", 0
+                    ),
                 )
                 for row in telemetry_data
             ]
