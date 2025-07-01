@@ -7,6 +7,7 @@ from fiber.logging_utils import get_logger
 from neurons import version_numerical
 
 from interfaces.types import NodeData
+from validator.platform_config import PlatformManager, PlatformConfig
 
 
 from typing import TYPE_CHECKING
@@ -109,10 +110,17 @@ class WeightsManager:
         self.tweets_weight = tweets_weight
         self.error_quality_weight = error_quality_weight
         self.error_rate_threshold = error_rate_threshold
+
+        # Initialize platform manager for multi-platform scoring
+        self.platform_manager = PlatformManager()
+
         logger.info(
             f"Initialized WeightsManager with weights: "
             f"tweets={tweets_weight}, error_quality={error_quality_weight}, "
             f"error_rate_threshold={error_rate_threshold}"
+        )
+        logger.info(
+            f"Platform manager initialized with {len(self.platform_manager.get_platform_names())} platforms"
         )
 
         # Ensure weights sum to 1.0
@@ -152,6 +160,105 @@ class WeightsManager:
         else:
             logger.warning(f"Unexpected timestamp type {type(timestamp)}, using 0")
             return 0
+
+    def calculate_platform_score(self, node: NodeData, platform_name: str) -> float:
+        """
+        Calculate the score for a single platform for a given node.
+
+        :param node: NodeData object containing platform metrics
+        :param platform_name: Name of the platform to score
+        :return: Normalized platform score (0.0 to 1.0)
+        """
+        if not hasattr(node, "platform_metrics") or not node.platform_metrics:
+            logger.debug(f"Node {node.hotkey} has no platform metrics")
+            return 0.0
+
+        platform_metrics = node.platform_metrics.get(platform_name, {})
+        if not platform_metrics:
+            logger.debug(
+                f"Node {node.hotkey} has no metrics for platform {platform_name}"
+            )
+            return 0.0
+
+        try:
+            platform_config = self.platform_manager.get_platform(platform_name)
+        except ValueError:
+            logger.warning(f"Unknown platform: {platform_name}")
+            return 0.0
+
+        # Calculate success metrics
+        success_score = 0.0
+        for metric in platform_config.success_metrics:
+            success_score += platform_metrics.get(metric, 0)
+
+        # Calculate error rate
+        error_count = 0
+        for metric in platform_config.error_metrics:
+            error_count += platform_metrics.get(metric, 0)
+
+        # Calculate time span for error rate calculation
+        time_span_seconds = getattr(node, "time_span_seconds", 0)
+        if time_span_seconds > 0:
+            hours = time_span_seconds / 3600
+            error_rate = error_count / hours
+        else:
+            error_rate = float("inf") if error_count > 0 else 0.0
+
+        # Apply error rate threshold
+        if error_rate > self.error_rate_threshold:
+            logger.debug(
+                f"Node {node.hotkey} platform {platform_name} exceeds error threshold: "
+                f"{error_rate:.2f} errors/hour"
+            )
+            return 0.0
+
+        # Convert error rate to quality score
+        error_quality = 1.0 / (1.0 + error_rate)
+
+        # Combine success and error quality scores
+        combined_score = (
+            success_score * self.tweets_weight
+            + error_quality * self.error_quality_weight
+        )
+
+        return float(combined_score)
+
+    def _update_platform_metrics(self, delta_node_data: List[NodeData]) -> None:
+        """
+        Update platform_metrics for nodes based on their delta telemetry data.
+        This ensures backward compatibility and proper multi-platform scoring.
+        """
+        for node in delta_node_data:
+            if not hasattr(node, "platform_metrics") or not node.platform_metrics:
+                node.platform_metrics = {}
+
+            # Update Twitter platform metrics from legacy fields
+            if (
+                node.twitter_returned_tweets > 0
+                or node.twitter_returned_profiles > 0
+                or node.twitter_auth_errors > 0
+                or node.twitter_errors > 0
+                or node.twitter_ratelimit_errors > 0
+            ):
+
+                node.platform_metrics["twitter"] = {
+                    "returned_tweets": node.twitter_returned_tweets,
+                    "returned_profiles": node.twitter_returned_profiles,
+                    "scrapes": node.twitter_scrapes,
+                    "auth_errors": node.twitter_auth_errors,
+                    "errors": node.twitter_errors,
+                    "ratelimit_errors": node.twitter_ratelimit_errors,
+                }
+
+            # Update TikTok platform metrics from new fields
+            tiktok_success = getattr(node, "tiktok_transcription_success", 0)
+            tiktok_errors = getattr(node, "tiktok_transcription_errors", 0)
+
+            if tiktok_success > 0 or tiktok_errors > 0:
+                node.platform_metrics["tiktok"] = {
+                    "transcription_success": tiktok_success,
+                    "transcription_errors": tiktok_errors,
+                }
 
     def _get_delta_node_data(self, telemetry_data: List[NodeData]) -> List[NodeData]:
         """
@@ -255,6 +362,18 @@ class WeightsManager:
                     0, latest_record.web_success - baseline_record.web_success
                 )
 
+                # Calculate TikTok deltas
+                delta_tiktok_transcription_success = max(
+                    0,
+                    getattr(latest_record, "tiktok_transcription_success", 0)
+                    - getattr(baseline_record, "tiktok_transcription_success", 0),
+                )
+                delta_tiktok_transcription_errors = max(
+                    0,
+                    getattr(latest_record, "tiktok_transcription_errors", 0)
+                    - getattr(baseline_record, "tiktok_transcription_errors", 0),
+                )
+
                 # Use the latest record's data for non-delta fields
                 latest = sorted_telemetry[-1]
 
@@ -276,6 +395,8 @@ class WeightsManager:
                     twitter_scrapes=delta_twitter_scrapes,
                     web_errors=delta_web_errors,
                     web_success=delta_web_success,
+                    tiktok_transcription_success=delta_tiktok_transcription_success,
+                    tiktok_transcription_errors=delta_tiktok_transcription_errors,
                 )
 
                 # Add custom attributes for error rate calculation
@@ -315,6 +436,8 @@ class WeightsManager:
                     twitter_scrapes=0,
                     web_errors=0,
                     web_success=0,
+                    tiktok_transcription_success=0,
+                    tiktok_transcription_errors=0,
                 )
                 # Add custom attributes for error rate calculation
                 delta_data.time_span_seconds = 0
@@ -344,6 +467,8 @@ class WeightsManager:
                     twitter_scrapes=0,
                     web_errors=0,
                     web_success=0,
+                    tiktok_transcription_success=0,
+                    tiktok_transcription_errors=0,
                 )
                 # Add custom attributes for error rate calculation
                 delta_data.time_span_seconds = 0
@@ -396,74 +521,41 @@ class WeightsManager:
 
         logger.debug(f"Calculating weights for {len(delta_node_data)} nodes")
 
-        # Extract metrics
-        logger.debug("Extracting node metrics")
-        tweets = np.array(
-            [float(node.twitter_returned_tweets) for node in delta_node_data]
-        )
+        # Update platform metrics for multi-platform scoring
+        logger.debug("Updating platform metrics for delta node data")
+        self._update_platform_metrics(delta_node_data)
 
-        # Calculate error rates per hour (inverse for scoring - lower errors =
-        # higher score)
-        logger.debug("Calculating error rates per hour")
-        error_rates_per_hour = []
+        # Calculate multi-platform scores
+        logger.debug("Calculating multi-platform scores")
+        combined_scores = []
+
         for node in delta_node_data:
-            time_span_seconds = getattr(node, "time_span_seconds", 0)
-            total_errors = getattr(node, "total_errors", 0)
+            total_weighted_score = 0.0
 
-            if time_span_seconds > 0:
-                # Calculate errors per hour
-                hours = time_span_seconds / 3600
-                error_rate = total_errors / hours
-            else:
-                # If no time span, assume maximum error rate for penalty
-                error_rate = float("inf")
+            # Calculate score for each platform and apply emission weights
+            for platform_name in self.platform_manager.get_platform_names():
+                platform_config = self.platform_manager.get_platform(platform_name)
+                platform_score = self.calculate_platform_score(node, platform_name)
+                weighted_score = platform_score * platform_config.emission_weight
+                total_weighted_score += weighted_score
 
-            error_rates_per_hour.append(error_rate)
+                logger.debug(
+                    f"Node {node.hotkey} platform {platform_name}: "
+                    f"score={platform_score:.4f}, weighted={weighted_score:.4f}"
+                )
 
-        error_rates_per_hour = np.array(error_rates_per_hour)
-
-        # Apply error rate threshold filter - mark nodes exceeding threshold
-        logger.debug(
-            f"Applying error rate threshold filter: {self.error_rate_threshold} errors/hour"
-        )
-        threshold_exceeded_mask = error_rates_per_hour > self.error_rate_threshold
-        exceeded_count = np.sum(threshold_exceeded_mask)
-
-        if exceeded_count > 0:
-            logger.info(
-                f"Found {exceeded_count} nodes exceeding error rate threshold of {self.error_rate_threshold} errors/hour"
+            combined_scores.append(total_weighted_score)
+            logger.debug(
+                f"Node {node.hotkey} total weighted score: {total_weighted_score:.4f}"
             )
-            for idx, node in enumerate(delta_node_data):
-                if threshold_exceeded_mask[idx]:
-                    logger.debug(
-                        f"Node {node.hotkey} exceeds threshold with {error_rates_per_hour[idx]:.2f} errors/hour"
-                    )
 
-        # Convert error rates to quality scores (inverse relationship)
-        # Replace infinite values with the maximum finite value + 1
-        max_finite_error_rate = (
-            np.max(error_rates_per_hour[np.isfinite(error_rates_per_hour)])
-            if np.any(np.isfinite(error_rates_per_hour))
-            else 0
-        )
-        error_rates_per_hour = np.where(
-            np.isinf(error_rates_per_hour),
-            max_finite_error_rate + 1,
-            error_rates_per_hour,
-        )
+        # Apply kurtosis curve to final scores
+        logger.debug("Applying kurtosis curve to combined scores")
+        combined_scores = np.array(combined_scores)
+        combined_scores = apply_kurtosis_custom(combined_scores)
 
-        # Convert to quality scores (1 / (1 + error_rate))
-        # This gives higher scores for lower error rates
-        error_quality_scores = 1.0 / (1.0 + error_rates_per_hour)
-
-        # Normalize metrics using kurtosis curve
-        logger.debug("Applying kurtosis curve to metrics")
-
-        tweets = apply_kurtosis_custom(tweets)
-        error_quality_scores = apply_kurtosis_custom(error_quality_scores)
-
-        # Calculate combined score
-        logger.debug("Calculating combined scores for each node")
+        # Apply final scores
+        logger.debug("Applying final scores to nodes")
         for idx, node in enumerate(delta_node_data):
             try:
                 if simulation:
@@ -472,39 +564,12 @@ class WeightsManager:
                     uid = self.validator.metagraph.nodes[node.hotkey].node_id
 
                 if uid is not None:
-                    # First calculate the base score with configurable weights
-                    base_score = float(
-                        tweets[idx] * self.tweets_weight
-                        + error_quality_scores[idx] * self.error_quality_weight
+                    # Use the multi-platform combined score
+                    score = float(combined_scores[idx])
+
+                    logger.debug(
+                        f"Node {node.hotkey} (UID {uid}) final score: {score:.4f}"
                     )
-
-                    # Apply error rate threshold penalty
-                    if threshold_exceeded_mask[idx]:
-                        # Calculate percentage exceedance
-                        error_rate = error_rates_per_hour[idx]
-                        percentage_exceedance = (
-                            error_rate - self.error_rate_threshold
-                        ) / self.error_rate_threshold
-                        # Cap penalty at 100% (score becomes 0)
-                        penalty_factor = min(1.0, percentage_exceedance)
-                        # Apply penalty to base score
-                        score = base_score * (1 - penalty_factor)
-
-                        logger.debug(
-                            f"Node {node.hotkey} (UID {uid}) penalized: "
-                            f"error_rate={error_rate:.2f}, threshold={self.error_rate_threshold}, "
-                            f"exceedance={percentage_exceedance:.2%}, penalty={penalty_factor:.2%}, "
-                            f"base_score={base_score:.4f}, final_score={score:.4f}"
-                        )
-                    else:
-                        # No penalty applied
-                        score = base_score
-                        logger.debug(
-                            f"Node {node.hotkey} (UID {uid}) score: {score:.4f} "
-                            f"(tweets: {tweets[idx]:.3f} * {self.tweets_weight}, "
-                            f"error_quality: {error_quality_scores[idx]:.3f} * "
-                            f"{self.error_quality_weight})"
-                        )
 
                     miner_scores[uid] = score
 

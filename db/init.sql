@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
     web_errors INTEGER DEFAULT 0,
     web_success INTEGER DEFAULT 0,
     worker_id VARCHAR(255),
+    tiktok_transcription_success INTEGER DEFAULT 0,
+    tiktok_transcription_errors INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

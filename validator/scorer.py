@@ -119,15 +119,15 @@ class NodeDataScorer:
 
     def aggregate_telemetry_stats(
         self, telemetry_result: Dict[str, Any]
-    ) -> Dict[str, int]:
+    ) -> tuple[Dict[str, int], Dict[str, Dict[str, int]]]:
         """
         Aggregate telemetry stats from multiple worker IDs.
         Only count stats with the active stat name and active worker version.
 
         :param telemetry_result: The telemetry result with stats by worker ID
-        :return: A dictionary with aggregated stats
+        :return: Tuple of (legacy stats dict, platform-specific stats dict)
         """
-        # Initialize aggregated stats
+        # Initialize legacy stats (backward compatibility)
         stats = {
             "twitter_auth_errors": 0,
             "twitter_errors": 0,
@@ -138,6 +138,25 @@ class NodeDataScorer:
             "twitter_scrapes": 0,
             "web_errors": 0,
             "web_success": 0,
+            "tiktok_transcription_success": 0,
+            "tiktok_transcription_errors": 0,
+        }
+
+        # Initialize platform-specific stats
+        platform_stats = {
+            "twitter": {
+                "auth_errors": 0,
+                "errors": 0,
+                "ratelimit_errors": 0,
+                "returned_other": 0,
+                "returned_profiles": 0,
+                "returned_tweets": 0,
+                "scrapes": 0,
+            },
+            "tiktok": {
+                "transcriptions": 0,
+                "errors": 0,
+            },
         }
 
         # Get the stats dictionary
@@ -261,6 +280,12 @@ class NodeDataScorer:
                     # Aggregate stats across all worker IDs
                     aggregated_stats = self.aggregate_telemetry_stats(telemetry_result)
 
+                    # Get platform metrics if using new aggregate_telemetry_stats
+                    platform_metrics = {}
+                    if isinstance(aggregated_stats, tuple):
+                        legacy_stats, platform_metrics = aggregated_stats
+                        aggregated_stats = legacy_stats
+
                     telemetry_data = NodeData(
                         hotkey=hotkey,
                         uid=uid,
@@ -288,6 +313,13 @@ class NodeDataScorer:
                         twitter_scrapes=aggregated_stats["twitter_scrapes"],
                         web_errors=aggregated_stats["web_errors"],
                         web_success=aggregated_stats["web_success"],
+                        platform_metrics=platform_metrics,
+                        tiktok_transcription_success=aggregated_stats.get(
+                            "tiktok_transcription_success", 0
+                        ),
+                        tiktok_transcription_errors=aggregated_stats.get(
+                            "tiktok_transcription_errors", 0
+                        ),
                     )
                     logger.info(f"Storing telemetry for node {hotkey[:10]}...")
                     twitter_stats = (

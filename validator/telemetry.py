@@ -101,7 +101,7 @@ class TEETelemetryClient:
             raise
 
     async def execute_telemetry_sequence(
-        self, max_retries=3, delay=5, routing_table=None
+        self, max_retries=1, delay=5, routing_table=None
     ):
         retries = 0
         while retries < max_retries:

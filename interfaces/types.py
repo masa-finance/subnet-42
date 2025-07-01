@@ -1,4 +1,5 @@
 # from typing import Optional, List
+from typing import Dict
 from cryptography.fernet import Fernet
 from dataclasses import dataclass, asdict
 
@@ -35,3 +36,12 @@ class NodeData(JSONSerializable):
     web_errors: int
     web_success: int
     timestamp: int
+    platform_metrics: Dict[str, Dict[str, int]] = None
+    # New TikTok telemetry fields
+    tiktok_transcription_success: int = 0
+    tiktok_transcription_errors: int = 0
+
+    def __post_init__(self):
+        """Initialize platform_metrics if not provided."""
+        if self.platform_metrics is None:
+            self.platform_metrics = {}

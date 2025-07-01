@@ -42,7 +42,7 @@ WEIGHTS_LOOP_CADENCE_SECONDS = (
     TIME_PER_WEIGHT_SETTING / 2
 )  # half of a weight setting period
 
-SYNC_LOOP_CADENCE_SECONDS = 120
+SYNC_LOOP_CADENCE_SECONDS = int(os.getenv("SYNC_LOOP_CADENCE_SECONDS", 10 * 60))
 
 
 class Validator:
