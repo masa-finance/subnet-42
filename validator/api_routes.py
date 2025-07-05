@@ -579,8 +579,15 @@ class ValidatorAPI:
 
             # Get the API URL from environment variables
             masa_tee_api = os.getenv("MASA_TEE_API", "")
+            masa_tee_api_key = os.getenv("MASA_TEE_API_KEY", "")
+
             if not masa_tee_api:
                 logger.error("MASA_TEE_API environment variable not set")
+                return {
+                    "success": False,
+                    "error": "MASA_TEE_API environment variable not set",
+                }
+            if not masa_tee_api_key:
                 return {
                     "success": False,
                     "error": "MASA_TEE_API environment variable not set",
@@ -596,8 +603,16 @@ class ValidatorAPI:
             # Make the API call
             logger.info(f"Calling MASA TEE API to register TEE worker: {address}")
 
+            # Prepare headers with API key
+            headers = {
+                "X-API-Key": masa_tee_api_key,
+                "Content-Type": "application/json",
+            }
+
             async with aiohttp.ClientSession() as session:
-                async with session.post(api_endpoint, json=payload) as response:
+                async with session.post(
+                    api_endpoint, json=payload, headers=headers
+                ) as response:
                     if response.status == 200:
                         response_data = await response.json()
                         logger.info(
