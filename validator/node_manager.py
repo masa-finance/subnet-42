@@ -354,12 +354,6 @@ class NodeManager:
                     )
             else:
                 logger.debug(f"No TEE addresses found for hotkey {hotkey}")
-                # If a node has no TEE addresses, mark all its current entries for cleanup
-                for address, _ in current_tees if current_tees else []:
-                    logger.info(
-                        f"Marking {address} for cleanup (no TEE addresses provided)"
-                    )
-                    # IMPORTANT: This cleanup is not happening
 
         except Exception as e:
             logger.error(f"Error processing hotkey {hotkey}: {str(e)}")
