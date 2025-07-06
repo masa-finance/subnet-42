@@ -569,12 +569,41 @@ class ValidatorAPI:
         :param hotkey: The hotkey associated with the TEE address
         :return: Success or error message
         """
+        # Get process monitor from background tasks
+        process_monitor = getattr(self.validator, "background_tasks", None)
+        if process_monitor:
+            process_monitor = getattr(process_monitor, "process_monitor", None)
+
+        execution_id = None
+
         try:
+            # Start monitoring for this TEE registration
+            if process_monitor:
+                execution_id = process_monitor.start_process("add_unregistered_tee")
+
             # Validate input
             if not address or not hotkey:
+                error_msg = "Both 'address' and 'hotkey' are required fields"
+
+                # Update metrics for validation error
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=1,
+                        errors=[error_msg],
+                        additional_metrics={
+                            "address": address,
+                            "hotkey": hotkey,
+                            "validation_error": True,
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
+
                 raise HTTPException(
                     status_code=400,
-                    detail="Both 'address' and 'hotkey' are required fields",
+                    detail=error_msg,
                 )
 
             # Get the API URL from environment variables
@@ -582,15 +611,51 @@ class ValidatorAPI:
             masa_tee_api_key = os.getenv("MASA_TEE_API_KEY", "")
 
             if not masa_tee_api:
-                logger.error("MASA_TEE_API environment variable not set")
+                error_msg = "MASA_TEE_API environment variable not set"
+                logger.error(error_msg)
+
+                # Update metrics for environment variable error
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=1,
+                        errors=[error_msg],
+                        additional_metrics={
+                            "address": address,
+                            "hotkey": hotkey,
+                            "env_var_error": "MASA_TEE_API",
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
+
                 return {
                     "success": False,
-                    "error": "MASA_TEE_API environment variable not set",
+                    "error": error_msg,
                 }
             if not masa_tee_api_key:
+                error_msg = "MASA_TEE_API_KEY environment variable not set"
+
+                # Update metrics for environment variable error
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=1,
+                        errors=[error_msg],
+                        additional_metrics={
+                            "address": address,
+                            "hotkey": hotkey,
+                            "env_var_error": "MASA_TEE_API_KEY",
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
+
                 return {
                     "success": False,
-                    "error": "MASA_TEE_API environment variable not set",
+                    "error": error_msg,
                 }
 
             # Format the API endpoint (normalize URL and append endpoint)
@@ -618,6 +683,25 @@ class ValidatorAPI:
                         logger.info(
                             f"Successfully registered TEE worker with MASA API: {address}"
                         )
+
+                        # Update metrics for successful registration
+                        if execution_id and process_monitor:
+                            process_monitor.update_metrics(
+                                execution_id,
+                                nodes_processed=1,
+                                successful_nodes=1,
+                                failed_nodes=0,
+                                additional_metrics={
+                                    "address": address,
+                                    "hotkey": hotkey,
+                                    "api_endpoint": api_endpoint,
+                                    "response_status": response.status,
+                                    "api_response": response_data,
+                                },
+                            )
+                            process_monitor.end_process(execution_id)
+                            execution_id = None
+
                         return {
                             "success": True,
                             "message": f"Successfully registered TEE worker: {address}",
@@ -633,13 +717,73 @@ class ValidatorAPI:
                             f"Failed to register TEE worker with MASA API: "
                             f"{response.status} - {response_text}"
                         )
+
+                        # Update metrics for API failure
+                        if execution_id and process_monitor:
+                            process_monitor.update_metrics(
+                                execution_id,
+                                nodes_processed=1,
+                                successful_nodes=0,
+                                failed_nodes=1,
+                                errors=[error_msg],
+                                additional_metrics={
+                                    "address": address,
+                                    "hotkey": hotkey,
+                                    "api_endpoint": api_endpoint,
+                                    "response_status": response.status,
+                                    "response_text": response_text,
+                                },
+                            )
+                            process_monitor.end_process(execution_id)
+                            execution_id = None
+
                         return {"success": False, "error": error_msg}
 
         except aiohttp.ClientError as e:
-            logger.error(f"API connection error: {str(e)}")
-            return {"success": False, "error": f"API connection error: {str(e)}"}
+            error_msg = f"API connection error: {str(e)}"
+            logger.error(error_msg)
+
+            # Update metrics for connection error
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=1,
+                    successful_nodes=0,
+                    failed_nodes=1,
+                    errors=[error_msg],
+                    additional_metrics={
+                        "address": address,
+                        "hotkey": hotkey,
+                        "connection_error": True,
+                        "error_type": "aiohttp.ClientError",
+                    },
+                )
+                process_monitor.end_process(execution_id)
+                execution_id = None
+
+            return {"success": False, "error": error_msg}
         except Exception as e:
-            logger.error(f"Failed to register TEE worker: {str(e)}")
+            error_msg = f"Failed to register TEE worker: {str(e)}"
+            logger.error(error_msg)
+
+            # Update metrics for unexpected error
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=1,
+                    successful_nodes=0,
+                    failed_nodes=1,
+                    errors=[error_msg],
+                    additional_metrics={
+                        "address": address,
+                        "hotkey": hotkey,
+                        "unexpected_error": True,
+                        "error_type": type(e).__name__,
+                    },
+                )
+                process_monitor.end_process(execution_id)
+                execution_id = None
+
             return {"success": False, "error": str(e)}
 
     async def dashboard(self):
