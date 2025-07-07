@@ -1,6 +1,5 @@
 import os
 import aiohttp
-import asyncio
 import random
 
 from db.routing_table_database import RoutingTableDatabase
@@ -246,18 +245,90 @@ class RoutingTable:
         except sqlite3.Error as e:
             logger.error(f"Failed to remove address {address}: {e}")
 
-    async def add_unregistered_tee(self, address, hotkey):
+    async def add_unregistered_tee(self, address, hotkey, validator=None):
         """Add an unregistered TEE to the database."""
+        # Get process monitor from validator if available
+        process_monitor = None
+        if validator:
+            process_monitor = getattr(validator, "background_tasks", None)
+            if process_monitor:
+                process_monitor = getattr(process_monitor, "process_monitor", None)
+
+        execution_id = None
+
         try:
+            # Start monitoring for this TEE registration
+            if process_monitor:
+                execution_id = process_monitor.start_process("add_unregistered_tee")
+
             # Validate input
             if not address or not hotkey:
-                logger.error("Both address and hotkey are required fields")
+                error_msg = "Both address and hotkey are required fields"
+                logger.error(error_msg)
+
+                # Update metrics for validation error
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=1,
+                        errors=[error_msg],
+                        additional_metrics={
+                            "address": address,
+                            "hotkey": hotkey,
+                            "validation_error": True,
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
+
                 return False
 
             # Get the API URL from environment variables
             masa_tee_api = os.getenv("MASA_TEE_API", "")
+            masa_tee_api_key = os.getenv("MASA_TEE_API_KEY", "")
+
             if not masa_tee_api:
-                logger.error("MASA_TEE_API environment variable not set")
+                error_msg = "MASA_TEE_API environment variable not set"
+                logger.error(error_msg)
+
+                # Update metrics for environment variable error
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=1,
+                        errors=[error_msg],
+                        additional_metrics={
+                            "address": address,
+                            "hotkey": hotkey,
+                            "env_var_error": "MASA_TEE_API",
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
+
+                return False
+            if not masa_tee_api_key:
+                error_msg = "MASA_TEE_API_KEY environment variable not set"
+                logger.error(error_msg)
+
+                # Update metrics for environment variable error
+                if execution_id and process_monitor:
+                    process_monitor.update_metrics(
+                        execution_id,
+                        nodes_processed=0,
+                        successful_nodes=0,
+                        failed_nodes=1,
+                        errors=[error_msg],
+                        additional_metrics={
+                            "address": address,
+                            "hotkey": hotkey,
+                            "env_var_error": "MASA_TEE_API_KEY",
+                        },
+                    )
+                    process_monitor.end_process(execution_id)
+
                 return False
 
             # Format the API endpoint and payload
@@ -267,27 +338,118 @@ class RoutingTable:
 
             logger.info(f"Calling MASA TEE API to register TEE worker: {address}")
 
+            # Prepare headers with API key
+            headers = {
+                "X-API-Key": masa_tee_api_key,
+                "Content-Type": "application/json",
+            }
+
             # Make API call directly without nested function
             async with aiohttp.ClientSession() as session:
-                async with session.post(api_endpoint, json=payload) as response:
+                async with session.post(
+                    api_endpoint, json=payload, headers=headers
+                ) as response:
                     if response.status == 200:
                         # Process response but don't need to store it
-                        await response.json()
+                        response_data = await response.json()
                         logger.info(
                             f"Successfully registered TEE worker with MASA API: "
                             f"{address}"
                         )
+
+                        # Update metrics for successful registration
+                        if execution_id and process_monitor:
+                            process_monitor.update_metrics(
+                                execution_id,
+                                nodes_processed=1,
+                                successful_nodes=1,
+                                failed_nodes=0,
+                                additional_metrics={
+                                    "address": address,
+                                    "hotkey": hotkey,
+                                    "api_endpoint": api_endpoint,
+                                    "response_status": response.status,
+                                    "api_response": response_data,
+                                },
+                            )
+                            process_monitor.end_process(execution_id)
+                            execution_id = None
+
                         return True
                     else:
                         response_text = await response.text()
-                        logger.error(
+                        error_msg = (
                             f"Failed to register TEE worker with MASA API: "
                             f"{response.status} - {response_text}"
                         )
+                        logger.error(error_msg)
+
+                        # Update metrics for API failure
+                        if execution_id and process_monitor:
+                            process_monitor.update_metrics(
+                                execution_id,
+                                nodes_processed=1,
+                                successful_nodes=0,
+                                failed_nodes=1,
+                                errors=[error_msg],
+                                additional_metrics={
+                                    "address": address,
+                                    "hotkey": hotkey,
+                                    "api_endpoint": api_endpoint,
+                                    "response_status": response.status,
+                                    "response_text": response_text,
+                                },
+                            )
+                            process_monitor.end_process(execution_id)
+                            execution_id = None
+
                         return False
 
+        except aiohttp.ClientError as e:
+            error_msg = f"API connection error: {str(e)}"
+            logger.error(error_msg)
+
+            # Update metrics for connection error
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=1,
+                    successful_nodes=0,
+                    failed_nodes=1,
+                    errors=[error_msg],
+                    additional_metrics={
+                        "address": address,
+                        "hotkey": hotkey,
+                        "connection_error": True,
+                        "error_type": "aiohttp.ClientError",
+                    },
+                )
+                process_monitor.end_process(execution_id)
+                execution_id = None
+
+            return False
         except Exception as e:
-            logger.error(f"Failed to register TEE worker: {e}")
+            error_msg = f"Failed to register TEE worker: {str(e)}"
+            logger.error(error_msg)
+
+            # Update metrics for unexpected error
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=1,
+                    successful_nodes=0,
+                    failed_nodes=1,
+                    errors=[error_msg],
+                    additional_metrics={
+                        "address": address,
+                        "hotkey": hotkey,
+                        "unexpected_error": True,
+                        "error_type": type(e).__name__,
+                    },
+                )
+                process_monitor.end_process(execution_id)
+                execution_id = None
+
             return False
 
     def clean_old_unregistered_tees(self):

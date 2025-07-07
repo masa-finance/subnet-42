@@ -97,6 +97,7 @@ class TEETelemetryClient:
                     await routing_table.add_unregistered_tee(
                         address=self.result_tee_worker_address,
                         hotkey="validator",  # Using "validator" as hotkey since this isn't associated with a specific miner
+                        validator=None,  # No validator instance available in this context
                     )
             raise
 

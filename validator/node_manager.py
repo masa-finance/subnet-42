@@ -489,7 +489,7 @@ class NodeManager:
             )
             # Add to unregistered TEEs table for tracking
             await self.validator.routing_table.add_unregistered_tee(
-                address=tee_address, hotkey=hotkey
+                address=tee_address, hotkey=hotkey, validator=self.validator
             )
             self.errors_storage.add_error(
                 hotkey=hotkey,
@@ -507,7 +507,7 @@ class NodeManager:
         )
         # Add to unregistered TEEs table for tracking
         await self.validator.routing_table.add_unregistered_tee(
-            address=tee_address, hotkey=hotkey
+            address=tee_address, hotkey=hotkey, validator=self.validator
         )
 
         logger.info(f"Added to unregistered TEEs: {tee_address} for hotkey {hotkey}")
