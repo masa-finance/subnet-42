@@ -33,7 +33,7 @@ services:
         compress: "true"
         mode: "non-blocking"
         max-buffer-size: "4m"
-  
+
   worker:
     profiles: ["tee", "miner-tee", "validator-tee"]
     image: masaengineering/tee-worker:latest
@@ -101,7 +101,7 @@ services:
         max-buffer-size: "4m"
 
   vpn:
-    profiles: ["vpn","miner-tee-vpn"]
+    profiles: ["vpn", "miner-tee-vpn"]
     build:
       context: .
       dockerfile: Dockerfile.vpn
@@ -118,7 +118,7 @@ services:
       - ./vpn:/etc/openvpn/config
     env_file: .env
     healthcheck:
-      test: ["CMD", "bash", "-c", "[ \"$(cat /tmp/vpn_ready)\" = \"1\" ]"]
+      test: ["CMD", "bash", "-c", '[ "$(cat /tmp/vpn_ready)" = "1" ]']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -133,7 +133,7 @@ services:
         max-buffer-size: "4m"
 
   cookies-generator:
-    profiles: ["cookies-refresh"]
+    profiles: ["cookie-refresh-docker", "cookie-refresh-kubernetes"]
     image: cookie-generator:latest
     pull_policy: never
     build:
@@ -157,22 +157,51 @@ services:
         mode: "non-blocking"
         max-buffer-size: "4m"
 
-  cookies-updater:
-    profiles: ["cookies-refresh"]
-    image: cookies-updater:latest
+  cookies-updater-docker:
+    profiles: ["cookie-refresh-docker"]
+    image: cookies-updater-docker:latest
     pull_policy: never
     build:
       context: .
-      dockerfile: Dockerfile.cookies.updater
+      dockerfile: Dockerfile.cookies.updater.docker
     volumes:
       - ./.env:/app/.env
-      - ${PWD}/cookies:/app/cookies
+      - ./cookies:/app/cookies
       - ./key.pem:/app/key.pem:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - COOKIES_REMOTE_HOSTS=${COOKIES_REMOTE_HOSTS:-localhost}
       - COOKIES_REMOTE_USER=${COOKIES_REMOTE_USER:-azureuser}
       - COOKIES_REMOTE_DIR=${COOKIES_REMOTE_DIR:-/tmp/cookies-upload}
+      - PYTHONUNBUFFERED=1
+    restart: "no"
+    env_file: .env
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
+    depends_on:
+      cookies-generator:
+        condition: service_completed_successfully
+
+  cookies-updater-kubernetes:
+    profiles: ["cookie-refresh-kubernetes"]
+    image: cookies-updater-kubernetes:latest
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile.cookies.updater.kubernetes
+    volumes:
+      - ./.env:/app/.env
+      - ./cookies:/app/cookies
+      - ./k8s.yml:/app/k8s.yml:ro
+    environment:
+      - DEPLOYMENTS=${DEPLOYMENTS}
+      - NAMESPACE=${NAMESPACE}
       - PYTHONUNBUFFERED=1
     restart: "no"
     env_file: .env

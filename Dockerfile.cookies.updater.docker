@@ -11,8 +11,8 @@ RUN apk add --no-cache \
 RUN mkdir -p /app/cookies /root/.ssh
 
 # Copy the update script
-COPY ./scripts/update_cookies.sh /app/
-RUN chmod +x /app/update_cookies.sh
+COPY ./scripts/update_cookies_docker.sh /app/
+RUN chmod +x /app/update_cookies_docker.sh
 
 # Set working directory
 WORKDIR /app
@@ -93,7 +93,7 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'else' >> /app/entrypoint.sh && \
     echo '    echo "Running in remote mode - transferring to hosts defined in COOKIES_REMOTE_HOSTS..."' >> /app/entrypoint.sh && \
     echo '    # Execute the update script' >> /app/entrypoint.sh && \
-    echo '    /app/update_cookies.sh' >> /app/entrypoint.sh && \
+    echo '    /app/update_cookies_docker.sh' >> /app/entrypoint.sh && \
     echo 'fi' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo 'echo "Cookie update process completed!"' >> /app/entrypoint.sh

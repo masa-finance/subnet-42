@@ -30,3 +30,5 @@ cookies/
 key.pem
 
 *.conf
+
+k8s.yml
