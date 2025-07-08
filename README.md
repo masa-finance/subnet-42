@@ -97,7 +97,16 @@ You should see:
 
 ## Cookie Management
 
-This project supports two different cookie refresh systems for updating Twitter authentication cookies:
+This project supports cookie refresh systems for updating Twitter authentication cookies across different deployment environments.
+
+### Generate Cookie Files Only
+
+To generate fresh Twitter cookie files without uploading them:
+
+```bash
+# Generate cookies only (creates JSON files in ./cookies/)
+docker compose up cookies-generator
+```
 
 ### Docker Cookie Refresh (for Docker-based miners)
 
@@ -105,13 +114,13 @@ Use this when your miners are running in Docker containers:
 
 ```bash
 # Generate cookies and update Docker-based miners
-docker compose --profile cookie-refresh-docker up
+docker compose up cookies-updater-docker
 ```
 
 This will:
 
-1. Generate fresh Twitter cookies using the `cookies-generator` service
-2. Update all Docker containers with `cookies-volume` volumes using the `cookies-updater-docker` service
+1. Generate fresh Twitter cookies using the `cookies-generator` service (automatic dependency)
+2. Update all Docker containers with `cookies-volume` volumes using SSH
 
 **Requirements:**
 
@@ -129,13 +138,13 @@ Use this when your miners are running in Kubernetes:
 
 ```bash
 # Generate cookies and update Kubernetes-based miners
-docker compose --profile cookie-refresh-kubernetes up
+docker compose up cookies-updater-kubernetes
 ```
 
 This will:
 
-1. Generate fresh Twitter cookies using the `cookies-generator` service
-2. Update all Kubernetes pods using the `cookies-updater-kubernetes` service
+1. Generate fresh Twitter cookies using the `cookies-generator` service (automatic dependency)
+2. Update all Kubernetes pods using `kubectl cp`
 
 **Requirements:**
 
@@ -146,9 +155,23 @@ This will:
   NAMESPACE=your-namespace                         # Kubernetes namespace
   ```
 
+### Upload Existing Cookies Only
+
+If you already have cookie files and want to upload them without regenerating:
+
+```bash
+# Upload existing cookies to Docker-based miners (skip generation)
+docker compose up cookies-updater-docker --no-deps
+
+# Upload existing cookies to Kubernetes-based miners (skip generation)
+docker compose up cookies-updater-kubernetes --no-deps
+```
+
+The `--no-deps` flag skips the `cookies-generator` dependency and uploads whatever cookie files are already present in the `./cookies/` directory.
+
 ### Twitter Account Configuration
 
-For both systems, configure your Twitter accounts in `.env`:
+For all cookie operations, configure your Twitter accounts in `.env`:
 
 ```env
 TWITTER_ACCOUNTS="username1:password1,username2:password2"
