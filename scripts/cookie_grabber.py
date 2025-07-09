@@ -678,9 +678,12 @@ def extract_email_from_password(password):
     domain = base_email.split("@")[1]
 
     try:
-        # Check if password starts with 'himynameis'
+        # Check if password starts with 'himynameis' or 'himynamewas'
         if password.startswith("himynameis"):
             name = password[10:]  # Extract everything after 'himynameis'
+            return f"{base_username}+{name}@{domain}"
+        elif password.startswith("himynamewas"):
+            name = password[11:]  # Extract everything after 'himynamewas'
             return f"{base_username}+{name}@{domain}"
     except:
         pass
