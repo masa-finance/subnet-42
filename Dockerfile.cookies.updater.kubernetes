@@ -27,9 +27,9 @@ RUN echo '#!/bin/bash' > /app/entrypoint.sh && \
     echo 'done' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \
     echo '# Check if kubeconfig is available' >> /app/entrypoint.sh && \
-    echo 'if [ ! -f "/app/k8s.yml" ]; then' >> /app/entrypoint.sh && \
-    echo '    echo "Error: k8s.yml kubeconfig file not found at /app/k8s.yml"' >> /app/entrypoint.sh && \
-    echo '    echo "Please mount your kubeconfig file to /app/k8s.yml"' >> /app/entrypoint.sh && \
+    echo 'if [ ! -f "/app/kubeconfig.yaml" ]; then' >> /app/entrypoint.sh && \
+    echo '    echo "Error: kubeconfig.yaml file not found at /app/kubeconfig.yaml"' >> /app/entrypoint.sh && \
+    echo '    echo "Please mount your kubeconfig file to /app/kubeconfig.yaml"' >> /app/entrypoint.sh && \
     echo '    exit 1' >> /app/entrypoint.sh && \
     echo 'fi' >> /app/entrypoint.sh && \
     echo '' >> /app/entrypoint.sh && \

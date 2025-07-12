@@ -34,7 +34,7 @@ for deployment in "${DEPLOYMENT_ARRAY[@]}"; do
     echo "Processing deployment: $deployment"
     
     # Get the current pod name for the deployment
-    POD_NAME=$(kubectl --kubeconfig ./k8s.yml get pods -n "$NAMESPACE" -l app="$deployment" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    POD_NAME=$(kubectl --kubeconfig ./kubeconfig.yaml get pods -n "$NAMESPACE" -l app="$deployment" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     
     if [ -z "$POD_NAME" ]; then
         echo "Warning: No pod found for deployment $deployment in namespace $NAMESPACE, skipping..."
@@ -44,11 +44,11 @@ for deployment in "${DEPLOYMENT_ARRAY[@]}"; do
     echo "Found pod: $POD_NAME in namespace: $NAMESPACE"
     echo "Copying cookie files to /home/masa/..."
     
-    # Copy all JSON cookie files
+    # Copy all JSON cookie files to the tee-worker container
     for file in ./cookies/*.json; do
         if [ -f "$file" ]; then
             echo "Copying $(basename "$file")..."
-            kubectl --kubeconfig ./k8s.yml cp "$file" "$NAMESPACE/$POD_NAME:/home/masa/" -c "$deployment"
+            kubectl --kubeconfig ./kubeconfig.yaml cp "$file" "$NAMESPACE/$POD_NAME:/home/masa/" -c tee-worker
         fi
     done
     
