@@ -31,4 +31,4 @@ key.pem
 
 *.conf
 
-k8s.yml
+kubeconfig.yaml

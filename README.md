@@ -148,7 +148,7 @@ This will:
 
 **Requirements:**
 
-- `k8s.yml` kubeconfig file in the project root
+- `kubeconfig.yaml` kubeconfig file in the project root
 - Environment variables in `.env`:
   ```env
   DEPLOYMENTS=deployment1,deployment2,deployment3  # Comma-separated list of deployments

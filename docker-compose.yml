@@ -195,7 +195,7 @@ services:
     volumes:
       - ./.env:/app/.env
       - ./cookies:/app/cookies
-      - ./k8s.yml:/app/k8s.yml:ro
+      - ./kubeconfig.yaml:/app/kubeconfig.yaml:ro
     environment:
       - DEPLOYMENTS=${DEPLOYMENTS}
       - NAMESPACE=${NAMESPACE}
