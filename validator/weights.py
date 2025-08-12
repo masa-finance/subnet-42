@@ -232,26 +232,6 @@ class WeightsManager:
             if not hasattr(node, "platform_metrics") or not node.platform_metrics:
                 node.platform_metrics = {}
 
-            if node.hotkey == "5EnLxS7pUwqRJGVbXY8Jzi2AwbR7sq4ewBiLwy6QR8GKgdyz":
-                print(
-                    f"Node {node.hotkey} has platform metrics: {node.platform_metrics}"
-                )
-                print(
-                    f"Node {node.hotkey} has twitter_returned_tweets: {node.twitter_returned_tweets}"
-                )
-                print(
-                    f"Node {node.hotkey} has twitter_returned_profiles: {node.twitter_returned_profiles}"
-                )
-                print(
-                    f"Node {node.hotkey} has twitter_auth_errors: {node.twitter_auth_errors}"
-                )
-                print(f"Node {node.hotkey} has twitter_errors: {node.twitter_errors}")
-                print(
-                    f"Node {node.hotkey} has twitter_ratelimit_errors: {node.twitter_ratelimit_errors}"
-                )
-                print(f"Node {node.hotkey} has twitter_scrapes: {node.twitter_scrapes}")
-                print(f"Node {node.hotkey} has web_errors: {node.web_errors}")
-
             # Update Twitter platform metrics from legacy fields
             if (
                 node.twitter_returned_tweets > 0
