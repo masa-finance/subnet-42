@@ -7,7 +7,7 @@ from fiber.logging_utils import get_logger
 from neurons import version_numerical
 
 from interfaces.types import NodeData
-from validator.platform_config import PlatformManager, PlatformConfig
+from validator.platform_config import PlatformManager
 
 
 from typing import TYPE_CHECKING
@@ -232,6 +232,26 @@ class WeightsManager:
             if not hasattr(node, "platform_metrics") or not node.platform_metrics:
                 node.platform_metrics = {}
 
+            if node.hotkey == "5EnLxS7pUwqRJGVbXY8Jzi2AwbR7sq4ewBiLwy6QR8GKgdyz":
+                print(
+                    f"Node {node.hotkey} has platform metrics: {node.platform_metrics}"
+                )
+                print(
+                    f"Node {node.hotkey} has twitter_returned_tweets: {node.twitter_returned_tweets}"
+                )
+                print(
+                    f"Node {node.hotkey} has twitter_returned_profiles: {node.twitter_returned_profiles}"
+                )
+                print(
+                    f"Node {node.hotkey} has twitter_auth_errors: {node.twitter_auth_errors}"
+                )
+                print(f"Node {node.hotkey} has twitter_errors: {node.twitter_errors}")
+                print(
+                    f"Node {node.hotkey} has twitter_ratelimit_errors: {node.twitter_ratelimit_errors}"
+                )
+                print(f"Node {node.hotkey} has twitter_scrapes: {node.twitter_scrapes}")
+                print(f"Node {node.hotkey} has web_errors: {node.web_errors}")
+
             # Update Twitter platform metrics from legacy fields
             if (
                 node.twitter_returned_tweets > 0
@@ -297,81 +317,160 @@ class WeightsManager:
                     key=lambda x: self._convert_timestamp_to_int(x.timestamp),
                 )
 
-                # Find baseline: start from first record, reset on any decrease
-                baseline_record = sorted_telemetry[0]
-                latest_record = sorted_telemetry[-1]
+                # Split telemetry into chunks based on worker restarts
+                # (when twitter_returned_tweets decreases)
+                chunks = []
+                chunk_start = 0
 
-                # Walk through records, reset baseline on any decrease in
-                # twitter_returned_tweets
-                for record in sorted_telemetry[1:]:
+                for i in range(1, len(sorted_telemetry)):
                     if (
-                        record.twitter_returned_tweets
-                        < baseline_record.twitter_returned_tweets
+                        sorted_telemetry[i].twitter_returned_tweets
+                        < sorted_telemetry[i - 1].twitter_returned_tweets
                     ):
-                        baseline_record = record  # Reset baseline to this record
+                        # Worker restart detected, end current chunk
+                        chunks.append(
+                            (chunk_start, i - 1)
+                        )  # End chunk at previous record
+                        chunk_start = i  # Start new chunk at current record
                         logger.debug(
-                            f"Reset baseline for {hotkey} at timestamp "
-                            f"{record.timestamp}"
+                            f"Worker restart detected for {hotkey} at timestamp "
+                            f"{sorted_telemetry[i].timestamp}, creating new chunk"
                         )
 
-                # Calculate simple delta from final baseline to latest
-                delta_boot_time = 0  # Not used in simple mode
-                delta_last_operation_time = 0  # Not used in simple mode
-                delta_twitter_returned_other = 0  # Not used in simple mode
+                # Add the final chunk
+                chunks.append((chunk_start, len(sorted_telemetry) - 1))
 
-                # Calculate time span for this chunk
-                # (timestamps are in seconds, convert to int first)
-                first_timestamp = self._convert_timestamp_to_int(
-                    baseline_record.timestamp
-                )
-                last_timestamp = self._convert_timestamp_to_int(latest_record.timestamp)
-                total_time_span_seconds = last_timestamp - first_timestamp
+                logger.debug(f"Created {len(chunks)} chunks for {hotkey}: {chunks}")
 
-                delta_twitter_auth_errors = max(
-                    0,
-                    latest_record.twitter_auth_errors
-                    - baseline_record.twitter_auth_errors,
-                )
-                delta_twitter_errors = max(
-                    0, latest_record.twitter_errors - baseline_record.twitter_errors
-                )
-                delta_twitter_ratelimit_errors = max(
-                    0,
-                    latest_record.twitter_ratelimit_errors
-                    - baseline_record.twitter_ratelimit_errors,
-                )
+                # Calculate deltas for each chunk and sum them up
+                total_delta_twitter_auth_errors = 0
+                total_delta_twitter_errors = 0
+                total_delta_twitter_ratelimit_errors = 0
+                total_delta_twitter_returned_profiles = 0
+                total_delta_twitter_returned_tweets = 0
+                total_delta_twitter_scrapes = 0
+                total_delta_web_errors = 0
+                total_delta_web_success = 0
+                total_delta_tiktok_transcription_success = 0
+                total_delta_tiktok_transcription_errors = 0
+                total_time_span_seconds = 0
 
-                delta_twitter_returned_profiles = max(
-                    0,
-                    latest_record.twitter_returned_profiles
-                    - baseline_record.twitter_returned_profiles,
-                )
-                delta_twitter_returned_tweets = max(
-                    0,
-                    latest_record.twitter_returned_tweets
-                    - baseline_record.twitter_returned_tweets,
-                )
+                for chunk_start_idx, chunk_end_idx in chunks:
+                    if chunk_start_idx == chunk_end_idx:
+                        # Single record chunk, no delta
+                        continue
 
-                delta_twitter_scrapes = max(
-                    0, latest_record.twitter_scrapes - baseline_record.twitter_scrapes
-                )
-                delta_web_errors = max(
-                    0, latest_record.web_errors - baseline_record.web_errors
-                )
-                delta_web_success = max(
-                    0, latest_record.web_success - baseline_record.web_success
-                )
+                    chunk_start_record = sorted_telemetry[chunk_start_idx]
+                    chunk_end_record = sorted_telemetry[chunk_end_idx]
 
-                # Calculate TikTok deltas
-                delta_tiktok_transcription_success = max(
-                    0,
-                    getattr(latest_record, "tiktok_transcription_success", 0)
-                    - getattr(baseline_record, "tiktok_transcription_success", 0),
+                    # Calculate time span for this chunk
+                    chunk_start_timestamp = self._convert_timestamp_to_int(
+                        chunk_start_record.timestamp
+                    )
+                    chunk_end_timestamp = self._convert_timestamp_to_int(
+                        chunk_end_record.timestamp
+                    )
+                    chunk_time_span = chunk_end_timestamp - chunk_start_timestamp
+                    total_time_span_seconds += chunk_time_span
+
+                    # Calculate deltas for this chunk
+                    chunk_delta_twitter_auth_errors = max(
+                        0,
+                        chunk_end_record.twitter_auth_errors
+                        - chunk_start_record.twitter_auth_errors,
+                    )
+                    chunk_delta_twitter_errors = max(
+                        0,
+                        chunk_end_record.twitter_errors
+                        - chunk_start_record.twitter_errors,
+                    )
+                    chunk_delta_twitter_ratelimit_errors = max(
+                        0,
+                        chunk_end_record.twitter_ratelimit_errors
+                        - chunk_start_record.twitter_ratelimit_errors,
+                    )
+                    chunk_delta_twitter_returned_profiles = max(
+                        0,
+                        chunk_end_record.twitter_returned_profiles
+                        - chunk_start_record.twitter_returned_profiles,
+                    )
+                    chunk_delta_twitter_returned_tweets = max(
+                        0,
+                        chunk_end_record.twitter_returned_tweets
+                        - chunk_start_record.twitter_returned_tweets,
+                    )
+                    chunk_delta_twitter_scrapes = max(
+                        0,
+                        chunk_end_record.twitter_scrapes
+                        - chunk_start_record.twitter_scrapes,
+                    )
+                    chunk_delta_web_errors = max(
+                        0,
+                        chunk_end_record.web_errors - chunk_start_record.web_errors,
+                    )
+                    chunk_delta_web_success = max(
+                        0,
+                        chunk_end_record.web_success - chunk_start_record.web_success,
+                    )
+                    chunk_delta_tiktok_transcription_success = max(
+                        0,
+                        getattr(chunk_end_record, "tiktok_transcription_success", 0)
+                        - getattr(
+                            chunk_start_record, "tiktok_transcription_success", 0
+                        ),
+                    )
+                    chunk_delta_tiktok_transcription_errors = max(
+                        0,
+                        getattr(chunk_end_record, "tiktok_transcription_errors", 0)
+                        - getattr(chunk_start_record, "tiktok_transcription_errors", 0),
+                    )
+
+                    # Sum up the deltas from all chunks
+                    total_delta_twitter_auth_errors += chunk_delta_twitter_auth_errors
+                    total_delta_twitter_errors += chunk_delta_twitter_errors
+                    total_delta_twitter_ratelimit_errors += (
+                        chunk_delta_twitter_ratelimit_errors
+                    )
+                    total_delta_twitter_returned_profiles += (
+                        chunk_delta_twitter_returned_profiles
+                    )
+                    total_delta_twitter_returned_tweets += (
+                        chunk_delta_twitter_returned_tweets
+                    )
+                    total_delta_twitter_scrapes += chunk_delta_twitter_scrapes
+                    total_delta_web_errors += chunk_delta_web_errors
+                    total_delta_web_success += chunk_delta_web_success
+                    total_delta_tiktok_transcription_success += (
+                        chunk_delta_tiktok_transcription_success
+                    )
+                    total_delta_tiktok_transcription_errors += (
+                        chunk_delta_tiktok_transcription_errors
+                    )
+
+                    logger.debug(
+                        f"Chunk {chunk_start_idx}-{chunk_end_idx} for {hotkey}: "
+                        f"tweets={chunk_delta_twitter_returned_tweets}, "
+                        f"scrapes={chunk_delta_twitter_scrapes}, "
+                        f"web_success={chunk_delta_web_success}"
+                    )
+
+                # Use the summed deltas
+                delta_boot_time = 0  # Not used in batch mode
+                delta_last_operation_time = 0  # Not used in batch mode
+                delta_twitter_returned_other = 0  # Not used in batch mode
+                delta_twitter_auth_errors = total_delta_twitter_auth_errors
+                delta_twitter_errors = total_delta_twitter_errors
+                delta_twitter_ratelimit_errors = total_delta_twitter_ratelimit_errors
+                delta_twitter_returned_profiles = total_delta_twitter_returned_profiles
+                delta_twitter_returned_tweets = total_delta_twitter_returned_tweets
+                delta_twitter_scrapes = total_delta_twitter_scrapes
+                delta_web_errors = total_delta_web_errors
+                delta_web_success = total_delta_web_success
+                delta_tiktok_transcription_success = (
+                    total_delta_tiktok_transcription_success
                 )
-                delta_tiktok_transcription_errors = max(
-                    0,
-                    getattr(latest_record, "tiktok_transcription_errors", 0)
-                    - getattr(baseline_record, "tiktok_transcription_errors", 0),
+                delta_tiktok_transcription_errors = (
+                    total_delta_tiktok_transcription_errors
                 )
 
                 # Use the latest record's data for non-delta fields
