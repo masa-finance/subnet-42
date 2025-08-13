@@ -195,6 +195,33 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add telemetry trigger endpoint
+        self.app.add_api_route(
+            "/trigger/telemetry",
+            self.trigger_telemetry_fetch,
+            methods=["POST"],
+            tags=["trigger"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add direct telemetry endpoint by hotkey
+        self.app.add_api_route(
+            "/telemetry/{hotkey}",
+            self.get_telemetry_by_hotkey,
+            methods=["GET"],
+            tags=["telemetry"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add live telemetry endpoint - fetches fresh data from miner
+        self.app.add_api_route(
+            "/telemetry/{hotkey}/live",
+            self.get_live_telemetry_by_hotkey,
+            methods=["GET"],
+            tags=["telemetry"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
         # Add weights monitoring endpoint
         self.app.add_api_route(
             "/monitoring/weights",
@@ -987,6 +1014,292 @@ class ValidatorAPI:
                 "success": False,
                 "error": str(e),
                 "timestamp": datetime.now().isoformat(),
+            }
+
+    async def trigger_telemetry_fetch(self):
+        """Trigger telemetry fetching process manually"""
+        try:
+            # Check if the validator has a scorer (NodeDataScorer)
+            if not hasattr(self.validator, "scorer"):
+                return {
+                    "success": False,
+                    "error": "NodeDataScorer not available",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            # Get process monitor for tracking if available
+            process_monitor = None
+            if hasattr(self.validator, "background_tasks") and hasattr(
+                self.validator.background_tasks, "process_monitor"
+            ):
+                process_monitor = self.validator.background_tasks.process_monitor
+
+            execution_id = None
+
+            # Start monitoring for this manual telemetry fetch
+            if process_monitor:
+                execution_id = process_monitor.start_process("manual_telemetry_fetch")
+
+            logger.info("Manual telemetry fetch triggered via API")
+
+            # Call the telemetry fetching method
+            await self.validator.scorer.get_node_data()
+
+            # Update metrics for successful execution
+            if execution_id and process_monitor:
+                connected_nodes_count = len(self.validator.node_manager.connected_nodes)
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=connected_nodes_count,
+                    successful_nodes=connected_nodes_count,
+                    failed_nodes=0,
+                    additional_metrics={
+                        "trigger_source": "api_manual",
+                        "connected_nodes": connected_nodes_count,
+                    },
+                )
+                process_monitor.end_process(execution_id)
+
+            logger.info("Manual telemetry fetch completed successfully")
+
+            return {
+                "success": True,
+                "message": "Telemetry fetching process triggered successfully",
+                "timestamp": datetime.now().isoformat(),
+                "nodes_processed": (
+                    len(self.validator.node_manager.connected_nodes)
+                    if hasattr(self.validator, "node_manager")
+                    else 0
+                ),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to trigger telemetry fetch process: {str(e)}")
+
+            # Update metrics for failed execution
+            if execution_id and process_monitor:
+                process_monitor.update_metrics(
+                    execution_id,
+                    nodes_processed=0,
+                    successful_nodes=0,
+                    failed_nodes=1,
+                    errors=[str(e)],
+                    additional_metrics={
+                        "trigger_source": "api_manual",
+                        "error_type": type(e).__name__,
+                    },
+                )
+                process_monitor.end_process(execution_id)
+
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    async def get_telemetry_by_hotkey(self, hotkey: str):
+        """Get telemetry data for a specific hotkey address"""
+        try:
+            # Get telemetry data from storage
+            telemetry_data = self.validator.telemetry_storage.get_telemetry_by_hotkey(
+                hotkey
+            )
+
+            if not telemetry_data:
+                return {
+                    "hotkey": hotkey,
+                    "found": False,
+                    "message": "No telemetry data found for this hotkey",
+                    "count": 0,
+                    "telemetry_data": [],
+                }
+
+            # Convert NodeData objects to dictionaries with clean structure
+            telemetry_dict_list = []
+            for data in telemetry_data:
+                telemetry_dict = {
+                    "hotkey": data.hotkey,
+                    "uid": data.uid,
+                    "worker_id": (
+                        data.worker_id if hasattr(data, "worker_id") else None
+                    ),
+                    "timestamp": data.timestamp,
+                    "timing": {
+                        "boot_time": data.boot_time,
+                        "last_operation_time": data.last_operation_time,
+                        "current_time": data.current_time,
+                    },
+                    "twitter_metrics": {
+                        "auth_errors": data.twitter_auth_errors,
+                        "errors": data.twitter_errors,
+                        "ratelimit_errors": data.twitter_ratelimit_errors,
+                        "returned_other": data.twitter_returned_other,
+                        "returned_profiles": data.twitter_returned_profiles,
+                        "returned_tweets": data.twitter_returned_tweets,
+                        "scrapes": data.twitter_scrapes,
+                    },
+                    "web_metrics": {
+                        "errors": data.web_errors,
+                        "success": data.web_success,
+                    },
+                    "tiktok_metrics": {
+                        "transcription_success": getattr(
+                            data, "tiktok_transcription_success", 0
+                        ),
+                        "transcription_errors": getattr(
+                            data, "tiktok_transcription_errors", 0
+                        ),
+                    },
+                }
+                telemetry_dict_list.append(telemetry_dict)
+
+            # Sort by timestamp (most recent first)
+            telemetry_dict_list.sort(key=lambda x: x["timestamp"], reverse=True)
+
+            # Get latest record for summary
+            latest = telemetry_dict_list[0] if telemetry_dict_list else None
+
+            return {
+                "hotkey": hotkey,
+                "found": True,
+                "count": len(telemetry_dict_list),
+                "latest_timestamp": latest["timestamp"] if latest else None,
+                "worker_id": latest["worker_id"] if latest else None,
+                "summary": {
+                    "total_twitter_tweets": (
+                        latest["twitter_metrics"]["returned_tweets"] if latest else 0
+                    ),
+                    "total_twitter_profiles": (
+                        latest["twitter_metrics"]["returned_profiles"] if latest else 0
+                    ),
+                    "total_web_success": (
+                        latest["web_metrics"]["success"] if latest else 0
+                    ),
+                    "total_tiktok_success": (
+                        latest["tiktok_metrics"]["transcription_success"]
+                        if latest
+                        else 0
+                    ),
+                },
+                "telemetry_data": telemetry_dict_list,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get telemetry for hotkey {hotkey}: {str(e)}")
+            return {
+                "hotkey": hotkey,
+                "found": False,
+                "error": str(e),
+                "count": 0,
+                "telemetry_data": [],
+            }
+
+    async def get_live_telemetry_by_hotkey(self, hotkey: str):
+        """Get fresh telemetry data directly from miner worker by hotkey"""
+        try:
+            # Find the miner's address from routing table
+            all_addresses = (
+                self.validator.routing_table.get_all_addresses_with_hotkeys()
+            )
+
+            # Find matching hotkey
+            miner_address = None
+            worker_id = None
+            for h, addr, w_id in all_addresses:
+                if h == hotkey:
+                    miner_address = addr
+                    worker_id = w_id
+                    break
+
+            if not miner_address:
+                return {
+                    "hotkey": hotkey,
+                    "found": False,
+                    "error": "Miner not found in routing table",
+                    "message": "No miner found with this hotkey address",
+                }
+
+            logger.info(
+                f"Fetching live telemetry from {hotkey[:10]}... at {miner_address}"
+            )
+
+            # Import TEETelemetryClient for direct connection
+            from validator.telemetry import TEETelemetryClient
+
+            # Create telemetry client and fetch fresh data
+            telemetry_client = TEETelemetryClient(miner_address)
+            telemetry_result = await telemetry_client.execute_telemetry_sequence(
+                routing_table=self.validator.routing_table
+            )
+
+            if not telemetry_result:
+                return {
+                    "hotkey": hotkey,
+                    "found": True,
+                    "error": "Failed to fetch telemetry from miner",
+                    "message": (
+                        f"Miner at {miner_address} did not return telemetry data"
+                    ),
+                    "miner_address": miner_address,
+                    "worker_id": worker_id,
+                }
+
+            # Process the raw telemetry result into structured format
+            return {
+                "hotkey": hotkey,
+                "found": True,
+                "source": "live_from_miner",
+                "miner_address": miner_address,
+                "worker_id": telemetry_result.get("worker_id", worker_id),
+                "timestamp": telemetry_result.get("current_time", "unknown"),
+                "timing": {
+                    "boot_time": telemetry_result.get("boot_time", 0),
+                    "last_operation_time": telemetry_result.get(
+                        "last_operation_time", 0
+                    ),
+                    "current_time": telemetry_result.get("current_time", 0),
+                },
+                "twitter_metrics": {
+                    "auth_errors": telemetry_result.get("twitter_auth_errors", 0),
+                    "errors": telemetry_result.get("twitter_errors", 0),
+                    "ratelimit_errors": telemetry_result.get(
+                        "twitter_ratelimit_errors", 0
+                    ),
+                    "returned_other": telemetry_result.get("twitter_returned_other", 0),
+                    "returned_profiles": telemetry_result.get(
+                        "twitter_returned_profiles", 0
+                    ),
+                    "returned_tweets": telemetry_result.get(
+                        "twitter_returned_tweets", 0
+                    ),
+                    "scrapes": telemetry_result.get("twitter_scrapes", 0),
+                },
+                "web_metrics": {
+                    "errors": telemetry_result.get("web_errors", 0),
+                    "success": telemetry_result.get("web_success", 0),
+                },
+                "tiktok_metrics": {
+                    "transcription_success": telemetry_result.get(
+                        "tiktok_transcription_success", 0
+                    ),
+                    "transcription_errors": telemetry_result.get(
+                        "tiktok_transcription_errors", 0
+                    ),
+                },
+                "platform_metrics": telemetry_result.get("platform_metrics", {}),
+                "raw_telemetry": telemetry_result,  # Include raw data
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch live telemetry for hotkey {hotkey}: {str(e)}"
+            )
+            return {
+                "hotkey": hotkey,
+                "found": False,
+                "error": str(e),
+                "message": "Exception occurred while fetching live telemetry",
+                "source": "live_from_miner",
             }
 
     async def monitor_weights_setting(self):

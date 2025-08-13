@@ -328,6 +328,47 @@ class TestGetDeltaNodeData(unittest.TestCase):
         self.assertEqual(hotkey1_result.twitter_returned_profiles, 25)  # 45 - 20
         self.assertEqual(hotkey1_result.web_success, 60)  # 100 - 40
 
+    def test_batch_calculation_with_multiple_restarts(self):
+        """Test that batch calculation sums deltas from all chunks instead of just the last one."""
+        # Create telemetry data with multiple restarts to test batch calculation
+        # This tests the new chunked approach vs the old single-baseline approach
+        hotkey1_data = self.create_telemetry_data(
+            "hotkey1",
+            [1000, 2000, 3000, 4000, 5000, 6000],  # Timestamps
+            [100, 100, 200, 200, 300, 300],  # Boot time changes twice (restarts)
+            [200, 300, 100, 200, 100, 200],  # Operation time resets at each restart
+            [10, 30, 5, 15, 8, 20],  # Twitter scrapes: chunk1=20, chunk2=10, chunk3=12
+            [5, 25, 2, 12, 3, 13],  # Twitter tweets: chunk1=20, chunk2=10, chunk3=10
+            [3, 18, 1, 8, 2, 9],  # Twitter profiles: chunk1=15, chunk2=7, chunk3=7
+            [8, 28, 4, 14, 6, 16],  # Web success: chunk1=20, chunk2=10, chunk3=10
+        )
+
+        self.mock_telemetry_storage.get_telemetry_by_hotkey.side_effect = (
+            lambda hotkey: (hotkey1_data if hotkey == "hotkey1" else [])
+        )
+
+        # Call the method
+        result = self.weights_manager._get_delta_node_data()
+
+        # Find hotkey1 result
+        hotkey1_result = next(data for data in result if data.hotkey == "hotkey1")
+
+        # With batch calculation, we should get sum of all chunks:
+        # Chunk 1 (indices 0-1): tweets=25-5=20, scrapes=30-10=20, profiles=18-3=15, web=28-8=20
+        # Chunk 2 (indices 2-3): tweets=12-2=10, scrapes=15-5=10, profiles=8-1=7, web=14-4=10
+        # Chunk 3 (indices 4-5): tweets=13-3=10, scrapes=20-8=12, profiles=9-2=7, web=16-6=10
+        # Total: tweets=40, scrapes=42, profiles=29, web=40
+
+        # Note: The old approach would only count the last chunk (tweets=10, scrapes=12, etc.)
+        self.assertEqual(
+            hotkey1_result.twitter_returned_tweets, 40
+        )  # Sum of all chunks
+        self.assertEqual(hotkey1_result.twitter_scrapes, 42)  # Sum of all chunks
+        self.assertEqual(
+            hotkey1_result.twitter_returned_profiles, 29
+        )  # Sum of all chunks
+        self.assertEqual(hotkey1_result.web_success, 40)  # Sum of all chunks
+
 
 if __name__ == "__main__":
     unittest.main()
