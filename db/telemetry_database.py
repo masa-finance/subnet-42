@@ -7,7 +7,7 @@ class TelemetryDatabase:
         self.db_path = db_path
         self.lock = Lock()
         self._create_table()
-        self._ensure_worker_id_column()
+        self._ensure_required_columns()
 
     def _create_table(self):
         with self.lock, sqlite3.connect(self.db_path) as conn:
@@ -21,24 +21,14 @@ class TelemetryDatabase:
                     boot_time INT,
                     last_operation_time INT,
                     current_time INT,
-                    twitter_auth_errors INT,
-                    twitter_errors INT,
-                    twitter_ratelimit_errors INT,
-                    twitter_returned_other INT,
-                    twitter_returned_profiles INT,
-                    twitter_returned_tweets INT,
-                    twitter_scrapes INT,
-                    web_errors INT,
-                    web_success INT,
                     worker_id TEXT,
-                    tiktok_transcription_success INT DEFAULT 0,
-                    tiktok_transcription_errors INT DEFAULT 0
+                    stats_json TEXT
                 )
             """
             )
             conn.commit()
 
-    def _ensure_worker_id_column(self):
+    def _ensure_required_columns(self):
         """
         Ensure required columns exist in the telemetry table.
         This handles database migrations for existing databases.
@@ -49,32 +39,52 @@ class TelemetryDatabase:
             cursor.execute("PRAGMA table_info(telemetry)")
             columns = [col[1] for col in cursor.fetchall()]
 
-            # Add missing columns
-            if "worker_id" not in columns:
-                cursor.execute("ALTER TABLE telemetry ADD COLUMN worker_id TEXT")
+            # Add missing columns for JSON storage
+            if "stats_json" not in columns:
+                cursor.execute("ALTER TABLE telemetry ADD COLUMN stats_json TEXT")
 
-            if "tiktok_transcription_success" not in columns:
-                cursor.execute(
-                    "ALTER TABLE telemetry ADD COLUMN tiktok_transcription_success INT DEFAULT 0"
-                )
+            # Legacy: Keep old columns for backward compatibility during migration
+            legacy_columns = [
+                "twitter_auth_errors",
+                "twitter_errors",
+                "twitter_ratelimit_errors",
+                "twitter_returned_other",
+                "twitter_returned_profiles",
+                "twitter_returned_tweets",
+                "twitter_scrapes",
+                "web_errors",
+                "web_success",
+                "tiktok_transcription_success",
+                "tiktok_transcription_errors",
+            ]
 
-            if "tiktok_transcription_errors" not in columns:
-                cursor.execute(
-                    "ALTER TABLE telemetry ADD COLUMN tiktok_transcription_errors INT DEFAULT 0"
-                )
+            for col in legacy_columns:
+                if col not in columns:
+                    cursor.execute(
+                        f"ALTER TABLE telemetry ADD COLUMN {col} INT DEFAULT 0"
+                    )
 
             conn.commit()
 
     def add_telemetry(self, telemetry_data):
+        import json
+        from interfaces.types import NodeData
+
         with self.lock, sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+
+            # Get stats JSON - it should already be populated
+            stats_json = telemetry_data.stats_json or {}
+            if not NodeData.validate_stats_integrity(stats_json):
+                print(
+                    f"Warning: Invalid stats data for hotkey {telemetry_data.hotkey}, storing anyway"
+                )
+
             cursor.execute(
                 """
                 INSERT INTO telemetry (hotkey, uid, boot_time, last_operation_time, current_time, 
-                twitter_auth_errors, twitter_errors, twitter_ratelimit_errors, twitter_returned_other, 
-                twitter_returned_profiles, twitter_returned_tweets, twitter_scrapes, web_errors, web_success,
-                worker_id, tiktok_transcription_success, tiktok_transcription_errors) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                worker_id, stats_json) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     telemetry_data.hotkey,
@@ -82,21 +92,83 @@ class TelemetryDatabase:
                     telemetry_data.boot_time,
                     telemetry_data.last_operation_time,
                     telemetry_data.current_time,
-                    telemetry_data.twitter_auth_errors,
-                    telemetry_data.twitter_errors,
-                    telemetry_data.twitter_ratelimit_errors,
-                    telemetry_data.twitter_returned_other,
-                    telemetry_data.twitter_returned_profiles,
-                    telemetry_data.twitter_returned_tweets,
-                    telemetry_data.twitter_scrapes,
-                    telemetry_data.web_errors,
-                    telemetry_data.web_success,
                     telemetry_data.worker_id,
-                    getattr(telemetry_data, "tiktok_transcription_success", 0),
-                    getattr(telemetry_data, "tiktok_transcription_errors", 0),
+                    json.dumps(stats_json),
                 ),
             )
             conn.commit()
+
+    def _convert_row_to_nodedata(self, row):
+        """Convert a database row to NodeData object."""
+        import json
+        from interfaces.types import NodeData
+
+        try:
+            # SQLite returns rows as tuples, map to actual column positions
+            # Current schema: hotkey(0), uid(1), timestamp(2), boot_time(3), last_operation_time(4),
+            # current_time(5), worker_id(6), stats_json(7), twitter_auth_errors(8)...tiktok_*(17,18)
+            hotkey = row[0] if len(row) > 0 else ""
+            uid = row[1] if len(row) > 1 else ""
+            timestamp = row[2] if len(row) > 2 else 0
+            boot_time = row[3] if len(row) > 3 else 0
+            last_operation_time = row[4] if len(row) > 4 else 0
+            current_time = row[5] if len(row) > 5 else 0
+            worker_id = (
+                row[6] if len(row) > 6 else ""
+            )  # CORRECTED: worker_id is at index 6
+            stats_json_str = (
+                row[7] if len(row) > 7 else "{}"
+            )  # CORRECTED: stats_json is at index 7
+
+            # Parse stats_json
+            stats_json = json.loads(stats_json_str) if stats_json_str else {}
+
+            # Create NodeData with JSON stats
+            # Handle timestamp conversion (could be datetime string or int)
+            try:
+                if isinstance(timestamp, str):
+                    # Convert datetime string to timestamp (simplified)
+                    import time
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(timestamp.replace(" ", "T"))
+                    timestamp_int = int(dt.timestamp())
+                else:
+                    timestamp_int = int(timestamp) if timestamp else 0
+            except:
+                timestamp_int = 0
+
+            node_data = NodeData(
+                hotkey=hotkey,
+                uid=uid or "",
+                worker_id=worker_id or "",
+                timestamp=timestamp_int,
+                boot_time=boot_time or 0,
+                last_operation_time=last_operation_time or 0,
+                current_time=current_time or 0,
+                stats_json=stats_json,
+            )
+
+            # Populate legacy fields for backward compatibility
+            node_data.populate_legacy_fields()
+
+            return node_data
+        except Exception as e:
+            print(f"Failed to convert row to NodeData: {e}")
+            import traceback
+
+            traceback.print_exc()
+            # Return a default NodeData object with minimal data
+            return NodeData(
+                hotkey=row[0] if len(row) > 0 else "",
+                uid=row[1] if len(row) > 1 else "",
+                worker_id=row[6] if len(row) > 6 else "",  # CORRECTED index
+                timestamp=0,
+                boot_time=0,
+                last_operation_time=0,
+                current_time=0,
+                stats_json={},
+            )
 
     def clean_old_entries(self, hours):
         """
@@ -119,12 +191,12 @@ class TelemetryDatabase:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT * FROM telemetry WHERE hotkey = ?
+                SELECT * FROM telemetry WHERE hotkey = ? ORDER BY timestamp DESC
                 """,
                 (hotkey,),
             )
-            telemetry_data = cursor.fetchall()
-            return telemetry_data
+            rows = cursor.fetchall()
+            return [self._convert_row_to_nodedata(row) for row in rows]
 
     def get_all_hotkeys_with_telemetry(self):
         """Retrieve all unique hotkeys that have at least one telemetry entry."""
@@ -157,8 +229,8 @@ class TelemetryDatabase:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT * FROM telemetry
+                SELECT * FROM telemetry ORDER BY timestamp DESC
                 """
             )
-            telemetry_data = cursor.fetchall()
-            return telemetry_data
+            rows = cursor.fetchall()
+            return [self._convert_row_to_nodedata(row) for row in rows]

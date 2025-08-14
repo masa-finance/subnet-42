@@ -48,6 +48,10 @@ SYNC_LOOP_CADENCE_SECONDS = int(os.getenv("SYNC_LOOP_CADENCE_SECONDS", 10 * 60))
 class Validator:
     def __init__(self):
         """Initialize validator"""
+        # Initialize shutdown coordination first (needed by other components)
+        self.background_task_handles = []
+        self.shutdown_event = asyncio.Event()
+
         # Explicitly get environment variables
         self.config = Config()
         self.http_client_manager = HttpClientManager()
@@ -87,32 +91,36 @@ class Validator:
 
         self.routes = ValidatorAPI(validator=self)
 
+    def add_background_task(self, task):
+        """Add a background task to be tracked for graceful shutdown"""
+        self.background_task_handles.append(task)
+
     async def start(self) -> None:
         """Start the validator service"""
         try:
             await self.http_client_manager.start()
             self.app = factory_app(debug=False)
 
-            # Start background tasks
+            # Start background tasks and track them for graceful shutdown
+            logger.info("Starting background tasks...")
 
-            asyncio.create_task(
+            task1 = asyncio.create_task(
                 self.background_tasks.sync_loop(SYNC_LOOP_CADENCE_SECONDS)
             )
-            asyncio.create_task(
+            task2 = asyncio.create_task(
                 self.background_tasks.set_weights_loop(WEIGHTS_LOOP_CADENCE_SECONDS)
             )
+            task3 = asyncio.create_task(self.background_tasks.update_tee(60 * 60))
+            task4 = asyncio.create_task(self.background_tasks.telemetry_loop(60 * 10))
+            task5 = asyncio.create_task(self.background_tasks.monitor_cleanup_loop())
+            task6 = asyncio.create_task(self._cached_nats_loop())
 
-            # 1 hour
-            asyncio.create_task(self.background_tasks.update_tee(60 * 60))
+            # Store task references for cleanup
+            self.background_task_handles.extend(
+                [task1, task2, task3, task4, task5, task6]
+            )
 
-            # Start telemetry collection in its own task
-            asyncio.create_task(self.background_tasks.telemetry_loop(60 * 10))
-
-            # Start process monitoring cleanup task
-            asyncio.create_task(self.background_tasks.monitor_cleanup_loop())
-
-            # Start cached NATS publishing task (every 5 minutes)
-            asyncio.create_task(self._cached_nats_loop())
+            logger.info(f"Started {len(self.background_task_handles)} background tasks")
 
         except Exception as e:
             logger.error(f"Failed to start validator: {str(e)}")
@@ -125,8 +133,16 @@ class Validator:
                 port=self.config.VALIDATOR_PORT,
                 lifespan="on",
             )
-            server = uvicorn.Server(config)
-            await server.serve()
+            self.server = uvicorn.Server(config)
+
+            # Start server as a background task instead of blocking
+            server_task = asyncio.create_task(self.server.serve())
+            self.background_task_handles.append(server_task)
+
+            logger.info(
+                f"🌐 Server started on http://0.0.0.0:{self.config.VALIDATOR_PORT}"
+            )
+
         except Exception as e:
             logger.error(f"Failed to start validator api: {str(e)}")
             raise
@@ -166,12 +182,45 @@ class Validator:
         """Cleanup validator resources and shutdown gracefully.
 
         Closes:
+        - Background tasks
         - HTTP client connections
         - Server instances
         """
+        logger.info("🛑 Starting graceful shutdown...")
+
+        # Set shutdown event to signal background tasks
+        self.shutdown_event.set()
+
+        # Cancel all background tasks
+        if self.background_task_handles:
+            logger.info(
+                f"Cancelling {len(self.background_task_handles)} background tasks..."
+            )
+            for task in self.background_task_handles:
+                if not task.done():
+                    task.cancel()
+
+            # Wait for all tasks to complete with timeout
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        *self.background_task_handles, return_exceptions=True
+                    ),
+                    timeout=10.0,
+                )
+                logger.info("✅ All background tasks cancelled successfully")
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Some background tasks did not cancel within timeout")
+            except Exception as e:
+                logger.error(f"Error during task cancellation: {e}")
+
+        # Stop HTTP client and server
+        logger.info("Stopping HTTP client and server...")
         await self.http_client_manager.stop()
         if self.server:
             await self.server.stop()
+
+        logger.info("🎉 Validator shutdown complete")
 
     def connected_nodes(self):
         return self.routing_table.get_all_addresses()
@@ -294,11 +343,19 @@ class Validator:
         """Background task to send cached connected nodes every 5 minutes."""
         while True:
             try:
+                # Check for shutdown signal
+                if self.shutdown_event.is_set():
+                    logger.info("NATS loop received shutdown signal, exiting...")
+                    break
+
                 await asyncio.sleep(300)  # 5 minutes
                 logger.info("Sending cached connected nodes to NATS")
                 await self.NATSPublisher.send_connected_nodes(
                     force=True, use_cached=True
                 )
+            except asyncio.CancelledError:
+                logger.info("NATS loop cancelled, exiting gracefully...")
+                break
             except Exception as e:
                 logger.error(f"Error in cached NATS loop: {str(e)}")
                 # Continue the loop even if there's an error

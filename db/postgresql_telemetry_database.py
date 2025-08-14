@@ -275,7 +275,7 @@ class PostgreSQLTelemetryDatabase:
 
     def _create_table_and_indexes(self, cursor):
         """Create the telemetry table and indexes."""
-        # Create the telemetry table
+        # Create the telemetry table with JSON stats storage
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS telemetry (
@@ -286,18 +286,8 @@ class PostgreSQLTelemetryDatabase:
                 boot_time BIGINT,
                 last_operation_time BIGINT,
                 "current_time" BIGINT,
-                twitter_auth_errors INTEGER DEFAULT 0,
-                twitter_errors INTEGER DEFAULT 0,
-                twitter_ratelimit_errors INTEGER DEFAULT 0,
-                twitter_returned_other INTEGER DEFAULT 0,
-                twitter_returned_profiles INTEGER DEFAULT 0,
-                twitter_returned_tweets INTEGER DEFAULT 0,
-                twitter_scrapes INTEGER DEFAULT 0,
-                web_errors INTEGER DEFAULT 0,
-                web_success INTEGER DEFAULT 0,
                 worker_id VARCHAR(255),
-                tiktok_transcription_success INTEGER DEFAULT 0,
-                tiktok_transcription_errors INTEGER DEFAULT 0,
+                stats_json JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
@@ -310,6 +300,7 @@ class PostgreSQLTelemetryDatabase:
             "CREATE INDEX IF NOT EXISTS idx_telemetry_created_at ON telemetry(created_at)",
             "CREATE INDEX IF NOT EXISTS idx_telemetry_uid ON telemetry(uid)",
             "CREATE INDEX IF NOT EXISTS idx_telemetry_worker_id ON telemetry(worker_id)",
+            "CREATE INDEX IF NOT EXISTS idx_telemetry_stats_json ON telemetry USING GIN (stats_json)",
             "CREATE INDEX IF NOT EXISTS idx_telemetry_hotkey_created_at ON telemetry(hotkey, created_at DESC)",
         ]
 
@@ -357,24 +348,27 @@ class PostgreSQLTelemetryDatabase:
             raise
 
     def add_telemetry(self, telemetry_data):
-        """Add telemetry data to PostgreSQL database."""
+        """Add telemetry data to PostgreSQL database using JSON storage."""
+        import json
+        from interfaces.types import NodeData
+
         with self.lock:
             try:
                 with self._get_connection() as conn:
                     with conn.cursor() as cursor:
+                        # Get stats JSON - it should already be populated
+                        stats_json = telemetry_data.stats_json or {}
+                        if not NodeData.validate_stats_integrity(stats_json):
+                            logger.warning(
+                                f"Invalid stats data for hotkey {telemetry_data.hotkey}, storing anyway"
+                            )
+
                         cursor.execute(
                             """
                             INSERT INTO telemetry (
                                 hotkey, uid, boot_time, last_operation_time, 
-                                "current_time", twitter_auth_errors, 
-                                twitter_errors, twitter_ratelimit_errors,
-                                twitter_returned_other, 
-                                twitter_returned_profiles, 
-                                twitter_returned_tweets, twitter_scrapes, 
-                                web_errors, web_success, worker_id,
-                                tiktok_transcription_success, tiktok_transcription_errors
+                                "current_time", worker_id, stats_json
                             ) VALUES (
-                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
                                 %s, %s, %s, %s, %s, %s, %s
                             )
                             """,
@@ -384,22 +378,8 @@ class PostgreSQLTelemetryDatabase:
                                 telemetry_data.boot_time,
                                 telemetry_data.last_operation_time,
                                 telemetry_data.current_time,
-                                telemetry_data.twitter_auth_errors,
-                                telemetry_data.twitter_errors,
-                                telemetry_data.twitter_ratelimit_errors,
-                                telemetry_data.twitter_returned_other,
-                                telemetry_data.twitter_returned_profiles,
-                                telemetry_data.twitter_returned_tweets,
-                                telemetry_data.twitter_scrapes,
-                                telemetry_data.web_errors,
-                                telemetry_data.web_success,
                                 telemetry_data.worker_id,
-                                getattr(
-                                    telemetry_data, "tiktok_transcription_success", 0
-                                ),
-                                getattr(
-                                    telemetry_data, "tiktok_transcription_errors", 0
-                                ),
+                                json.dumps(stats_json),
                             ),
                         )
                         conn.commit()
@@ -437,6 +417,47 @@ class PostgreSQLTelemetryDatabase:
                 )
                 raise
 
+    def _convert_row_to_nodedata(self, row):
+        """Convert a database row to NodeData object."""
+        import json
+        from interfaces.types import NodeData
+
+        try:
+            # Parse stats_json if it exists
+            stats_json = (
+                json.loads(row.get("stats_json", "{}")) if row.get("stats_json") else {}
+            )
+
+            # Create NodeData with JSON stats
+            node_data = NodeData(
+                hotkey=row["hotkey"],
+                uid=row["uid"] or "",
+                worker_id=row["worker_id"] or "",
+                timestamp=int(row.get("timestamp", 0)) if row.get("timestamp") else 0,
+                boot_time=row.get("boot_time", 0) or 0,
+                last_operation_time=row.get("last_operation_time", 0) or 0,
+                current_time=row.get("current_time", 0) or 0,
+                stats_json=stats_json,
+            )
+
+            # Populate legacy fields for backward compatibility
+            node_data.populate_legacy_fields()
+
+            return node_data
+        except Exception as e:
+            logger.error(f"Failed to convert row to NodeData: {e}")
+            # Return a default NodeData object with minimal data
+            return NodeData(
+                hotkey=row.get("hotkey", ""),
+                uid=row.get("uid", ""),
+                worker_id=row.get("worker_id", ""),
+                timestamp=0,
+                boot_time=0,
+                last_operation_time=0,
+                current_time=0,
+                stats_json={},
+            )
+
     def get_telemetry_by_hotkey(self, hotkey):
         """Retrieve telemetry data for a specific hotkey."""
         with self.lock:
@@ -451,7 +472,8 @@ class PostgreSQLTelemetryDatabase:
                             """,
                             (hotkey,),
                         )
-                        return cursor.fetchall()
+                        rows = cursor.fetchall()
+                        return [self._convert_row_to_nodedata(row) for row in rows]
             except psycopg2.Error as e:
                 logger.error(
                     f"Failed to get telemetry by hotkey from " f"PostgreSQL: {e}"
@@ -515,7 +537,8 @@ class PostgreSQLTelemetryDatabase:
                             """,
                             (limit,),
                         )
-                        return cursor.fetchall()
+                        rows = cursor.fetchall()
+                        return [self._convert_row_to_nodedata(row) for row in rows]
             except psycopg2.Error as e:
                 logger.error(f"Failed to get all telemetry from PostgreSQL: {e}")
                 return []

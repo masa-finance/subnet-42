@@ -142,8 +142,8 @@ class NodeDataScorer:
             "tiktok_transcription_errors": 0,
         }
 
-        # Initialize platform-specific stats
-        platform_stats = {
+        # Initialize platform-specific stats (legacy - will be replaced by dynamic approach)
+        platform_metrics_legacy = {
             "twitter": {
                 "auth_errors": 0,
                 "errors": 0,
@@ -219,6 +219,50 @@ class NodeDataScorer:
 
         return stats
 
+    def aggregate_telemetry_stats_without_validation(
+        self, telemetry_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Aggregate telemetry stats without source validation.
+        Store ALL stats dynamically and let validation happen during delta calculation.
+        Returns the complete stats_json for dynamic storage.
+        """
+        worker_id = telemetry_result.get("worker_id", "unknown")
+
+        # Initialize dynamic stats storage
+        aggregated_stats = {}
+
+        # Check if we have the new stats format
+        stats_dict = telemetry_result.get("stats", {})
+
+        if not isinstance(stats_dict, dict) or not stats_dict:
+            # Fallback to legacy format - store all numeric fields from telemetry_result
+            logger.info(f"Worker ({worker_id}): Using legacy stats format")
+            for key, value in telemetry_result.items():
+                if isinstance(value, (int, float)) and key != "worker_id":
+                    aggregated_stats[key] = int(value)
+        else:
+            # New format - aggregate ALL stats from ALL worker IDs (no validation)
+            logger.info(
+                f"Worker ({worker_id}): Aggregating all stats without validation"
+            )
+
+            for source_worker_id, worker_stats in stats_dict.items():
+                logger.info(
+                    f"Worker ({worker_id}): Processing stats from source {source_worker_id}"
+                )
+
+                # Aggregate ALL stats from this worker dynamically
+                for stat_name, value in worker_stats.items():
+                    if isinstance(value, (int, float)):
+                        current_value = aggregated_stats.get(stat_name, 0)
+                        aggregated_stats[stat_name] = current_value + int(value)
+
+            # Store raw platform metrics for later validation during delta calculation
+            aggregated_stats["platform_metrics"] = stats_dict
+
+        return aggregated_stats
+
     async def get_node_data(self):
         """
         Retrieve node data from all nodes in the network.
@@ -277,14 +321,19 @@ class NodeDataScorer:
                     logger.info(f"Node {hotkey[:10]}... has UID: {uid}")
                     logger.info(f"Node {hotkey[:10]}... worker ID: {worker_id}")
 
-                    # Aggregate stats across all worker IDs
-                    aggregated_stats = self.aggregate_telemetry_stats(telemetry_result)
+                    # Aggregate stats across all worker IDs without validation
+                    # Validation will happen during delta calculation phase
+                    stats_json = self.aggregate_telemetry_stats_without_validation(
+                        telemetry_result
+                    )
 
-                    # Get platform metrics if using new aggregate_telemetry_stats
-                    platform_metrics = {}
-                    if isinstance(aggregated_stats, tuple):
-                        legacy_stats, platform_metrics = aggregated_stats
-                        aggregated_stats = legacy_stats
+                    # Extract platform metrics using the platform manager
+                    from validator.platform_config import PlatformManager
+
+                    platform_manager = PlatformManager()
+                    platform_metrics = (
+                        platform_manager.extract_platform_metrics_from_stats(stats_json)
+                    )
 
                     telemetry_data = NodeData(
                         hotkey=hotkey,
@@ -296,31 +345,12 @@ class NodeDataScorer:
                             "last_operation_time", 0
                         ),
                         current_time=telemetry_result.get("current_time", 0),
-                        twitter_auth_errors=aggregated_stats["twitter_auth_errors"],
-                        twitter_errors=aggregated_stats["twitter_errors"],
-                        twitter_ratelimit_errors=aggregated_stats[
-                            "twitter_ratelimit_errors"
-                        ],
-                        twitter_returned_other=aggregated_stats[
-                            "twitter_returned_other"
-                        ],
-                        twitter_returned_profiles=aggregated_stats[
-                            "twitter_returned_profiles"
-                        ],
-                        twitter_returned_tweets=aggregated_stats[
-                            "twitter_returned_tweets"
-                        ],
-                        twitter_scrapes=aggregated_stats["twitter_scrapes"],
-                        web_errors=aggregated_stats["web_errors"],
-                        web_success=aggregated_stats["web_success"],
+                        stats_json=stats_json,
                         platform_metrics=platform_metrics,
-                        tiktok_transcription_success=aggregated_stats.get(
-                            "tiktok_transcription_success", 0
-                        ),
-                        tiktok_transcription_errors=aggregated_stats.get(
-                            "tiktok_transcription_errors", 0
-                        ),
                     )
+
+                    # Populate legacy fields for backward compatibility
+                    telemetry_data.populate_legacy_fields()
                     logger.info(f"Storing telemetry for node {hotkey[:10]}...")
                     twitter_stats = (
                         f"Twitter stats for {hotkey[:10]}: "

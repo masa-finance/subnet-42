@@ -25,6 +25,13 @@ class BackgroundTasks:
         self.scorer = validator.scorer  # Initialize the scorer from the validator
         self.process_monitor = ProcessMonitor(max_records_per_process=256)
 
+    async def _cancellation_aware_sleep(self, duration):
+        """Sleep that can be interrupted by cancellation or shutdown signal"""
+        try:
+            await asyncio.wait_for(asyncio.sleep(duration), timeout=duration)
+        except asyncio.TimeoutError:
+            pass  # Normal timeout, continue
+
     async def sync_loop(self, cadence_seconds) -> None:
         """Background task to sync metagraph"""
         # Ensure we have a safe cadence value (at least 30 seconds)
@@ -44,18 +51,27 @@ class BackgroundTasks:
 
         while True:
             try:
+                # Check for shutdown signal
+                if self.validator.shutdown_event.is_set():
+                    logger.info("Sync loop received shutdown signal, exiting...")
+                    break
+
                 # Main tasks
                 logger.info("Running sync loop")
                 await self.validator.metagraph_manager.sync_metagraph()
 
-                # Wait for next cycle
-                await asyncio.sleep(safe_cadence)
+                # Wait for next cycle (with cancellation check)
+                await self._cancellation_aware_sleep(safe_cadence)
+
+            except asyncio.CancelledError:
+                logger.info("Sync loop cancelled, exiting gracefully...")
+                break
             except Exception as e:
                 # Log the error
                 logger.error(f"Error in sync metagraph: {str(e)}")
 
                 # Wait before retrying (using pre-calculated safe delay)
-                await asyncio.sleep(retry_delay)
+                await self._cancellation_aware_sleep(retry_delay)
 
     async def update_tee(self, cadence_seconds) -> None:
         """Background task to update tee"""
@@ -77,6 +93,11 @@ class BackgroundTasks:
         while True:
             execution_id = None
             try:
+                # Check for shutdown signal
+                if self.validator.shutdown_event.is_set():
+                    logger.info("TEE update loop received shutdown signal, exiting...")
+                    break
+
                 # Start monitoring for this cycle
                 execution_id = self.process_monitor.start_process("update_tee")
 
@@ -134,8 +155,15 @@ class BackgroundTasks:
                     execution_id = None
 
                 # Wait for next cycle
-                await asyncio.sleep(safe_cadence)
+                await self._cancellation_aware_sleep(safe_cadence)
 
+            except asyncio.CancelledError:
+                logger.info("TEE update loop cancelled, exiting gracefully...")
+                # Ensure flag is cleared on cancellation
+                self.validator.routing_table_updating = False
+                if execution_id:
+                    self.process_monitor.end_process(execution_id)
+                break
             except Exception as e:
                 # Ensure flag is cleared on error
                 self.validator.routing_table_updating = False
@@ -154,7 +182,7 @@ class BackgroundTasks:
                     execution_id = None
 
                 # Wait before retrying (using pre-calculated safe delay)
-                await asyncio.sleep(retry_delay)
+                await self._cancellation_aware_sleep(retry_delay)
 
     async def telemetry_loop(self, cadence_seconds) -> None:
         """Background task to collect node telemetry data independently"""
@@ -176,6 +204,11 @@ class BackgroundTasks:
         while True:
             execution_id = None
             try:
+                # Check for shutdown signal
+                if self.validator.shutdown_event.is_set():
+                    logger.info("Telemetry loop received shutdown signal, exiting...")
+                    break
+
                 # Start monitoring for this cycle
                 execution_id = self.process_monitor.start_process("telemetry_loop")
 
@@ -202,8 +235,13 @@ class BackgroundTasks:
                     execution_id = None
 
                 # Wait for next cycle
-                await asyncio.sleep(safe_cadence)
+                await self._cancellation_aware_sleep(safe_cadence)
 
+            except asyncio.CancelledError:
+                logger.info("Telemetry loop cancelled, exiting gracefully...")
+                if execution_id:
+                    self.process_monitor.end_process(execution_id)
+                break
             except Exception as e:
                 # Log the error
                 logger.error(f"Error collecting telemetry data: {str(e)}")
@@ -226,7 +264,7 @@ class BackgroundTasks:
                     execution_id = None
 
                 # Wait before retrying (using pre-calculated safe delay)
-                await asyncio.sleep(retry_delay)
+                await self._cancellation_aware_sleep(retry_delay)
 
     async def set_weights_loop(self, cadence_seconds) -> None:
         """Background task to set weights using the weights manager"""
@@ -247,17 +285,25 @@ class BackgroundTasks:
 
         while True:
             try:
+                # Check for shutdown signal
+                if self.validator.shutdown_event.is_set():
+                    logger.info("Weights loop received shutdown signal, exiting...")
+                    break
+
                 # Main tasks
                 await self.validator.weights_manager.set_weights()
 
                 # Wait for next cycle
-                await asyncio.sleep(safe_cadence)
+                await self._cancellation_aware_sleep(safe_cadence)
+            except asyncio.CancelledError:
+                logger.info("Weights loop cancelled, exiting gracefully...")
+                break
             except Exception as e:
                 # Log the error
                 logger.error(f"Error in setting weights: {str(e)}")
 
                 # Wait before retrying (using pre-calculated safe delay)
-                await asyncio.sleep(retry_delay)
+                await self._cancellation_aware_sleep(retry_delay)
 
     async def monitor_cleanup_loop(self) -> None:
         """Periodic cleanup of monitoring data to prevent memory growth"""
@@ -267,10 +313,20 @@ class BackgroundTasks:
 
         while True:
             try:
-                await asyncio.sleep(cleanup_interval)
+                # Check for shutdown signal
+                if self.validator.shutdown_event.is_set():
+                    logger.info(
+                        "Monitor cleanup loop received shutdown signal, exiting..."
+                    )
+                    break
+
+                await self._cancellation_aware_sleep(cleanup_interval)
                 # Clean up old records (keep last 24 hours)
                 self.process_monitor.cleanup_old_records(hours=24)
                 logger.debug("Cleaned up old process monitoring records")
+            except asyncio.CancelledError:
+                logger.info("Monitor cleanup loop cancelled, exiting gracefully...")
+                break
             except Exception as e:
                 logger.error(f"Error in monitor cleanup: {str(e)}")
-                await asyncio.sleep(300)  # Wait 5 minutes before retry
+                await self._cancellation_aware_sleep(300)  # Wait 5 minutes before retry

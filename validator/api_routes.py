@@ -61,6 +61,194 @@ class ValidatorAPI:
         self.app = FastAPI()
         self.register_routes()
 
+    def _nodedata_to_dict(self, data, format_type="dynamic") -> dict:
+        """
+        Convert NodeData object to dictionary using dynamic JSON structure.
+        This replaces the old hardcoded field approach.
+
+        Args:
+            data: NodeData object
+            format_type: "dynamic" for new format, "structured" for organized by platform
+        """
+        try:
+            if format_type == "structured":
+                # Structured format for user-friendly endpoints
+                return {
+                    "hotkey": data.hotkey,
+                    "uid": data.uid,
+                    "worker_id": getattr(data, "worker_id", None),
+                    "timestamp": data.timestamp,
+                    "timing": {
+                        "boot_time": data.boot_time,
+                        "last_operation_time": data.last_operation_time,
+                        "current_time": data.current_time,
+                    },
+                    # Dynamic platform metrics organized by platform
+                    "platform_metrics": getattr(data, "platform_metrics", {}) or {},
+                    # All raw stats available dynamically
+                    "raw_stats": getattr(data, "stats_json", {}) or {},
+                }
+            else:
+                # Dynamic format for monitoring endpoints
+                return {
+                    # Core fields
+                    "hotkey": data.hotkey,
+                    "uid": data.uid,
+                    "worker_id": getattr(data, "worker_id", None),
+                    "timestamp": data.timestamp,
+                    "boot_time": data.boot_time,
+                    "last_operation_time": data.last_operation_time,
+                    "current_time": data.current_time,
+                    # Dynamic stats - include all telemetry data
+                    "stats": getattr(data, "stats_json", {}) or {},
+                    # Platform metrics organized by platform
+                    "platform_metrics": getattr(data, "platform_metrics", {}) or {},
+                }
+        except Exception as e:
+            # Fallback to basic structure if there are any errors
+            return {
+                "hotkey": getattr(data, "hotkey", "unknown"),
+                "uid": getattr(data, "uid", 0),
+                "timestamp": getattr(data, "timestamp", 0),
+                "error": f"Error converting NodeData: {str(e)}",
+                "raw_stats": getattr(data, "stats_json", {}),
+                "platform_metrics": getattr(data, "platform_metrics", {}),
+            }
+
+    def _calculate_delta_summary(self, telemetry_data):
+        """
+        Calculate delta summary showing changes over time for key metrics.
+        Uses the same delta calculation logic as the scoring system.
+        """
+        if len(telemetry_data) < 2:
+            # Not enough data for delta calculation
+            return {
+                "delta_twitter_tweets": 0,
+                "delta_twitter_profiles": 0,
+                "delta_web_success": 0,
+                "delta_tiktok_success": 0,
+                "time_period": "N/A - insufficient data",
+                "note": "Insufficient data for delta calculation (need at least 2 records)",
+            }
+
+        try:
+            # Use the WeightsManager delta calculation logic
+            from validator.weights import WeightsManager
+
+            weights_manager = WeightsManager(self.validator)
+
+            # Calculate deltas using the same logic as scoring
+            delta_node_data = weights_manager._get_delta_node_data(telemetry_data)
+
+            # Find delta data for this hotkey
+            target_hotkey = telemetry_data[0].hotkey if telemetry_data else None
+            delta_data = None
+
+            for delta_node in delta_node_data:
+                if delta_node.hotkey == target_hotkey:
+                    delta_data = delta_node
+                    break
+
+            if delta_data and delta_data.platform_metrics:
+                # Calculate time period for context
+                sorted_data = sorted(telemetry_data, key=lambda x: x.timestamp)
+                time_span_hours = (
+                    sorted_data[-1].timestamp - sorted_data[0].timestamp
+                ) / 3600
+
+                return {
+                    "delta_twitter_tweets": (
+                        delta_data.platform_metrics.get("twitter", {}).get(
+                            "returned_tweets", 0
+                        )
+                    ),
+                    "delta_twitter_profiles": (
+                        delta_data.platform_metrics.get(
+                            "twitter-profile-apify", {}
+                        ).get("returned_profiles", 0)
+                    ),
+                    "delta_web_success": (
+                        delta_data.platform_metrics.get("web", {}).get("success", 0)
+                    ),
+                    "delta_tiktok_success": (
+                        delta_data.platform_metrics.get("tiktok", {}).get(
+                            "transcription_success", 0
+                        )
+                    ),
+                    "time_period": f"{time_span_hours:.1f} hours ({len(telemetry_data)} records)",
+                    "calculation_method": "WeightsManager delta logic (with restart detection)",
+                }
+            else:
+                # Fallback to simple oldest->newest calculation
+                return self._simple_delta_calculation(telemetry_data)
+
+        except Exception as e:
+            logger.error(f"Error calculating delta summary: {e}")
+            # Fallback to simple calculation
+            return self._simple_delta_calculation(telemetry_data)
+
+    def _simple_delta_calculation(self, telemetry_data):
+        """
+        Simple delta calculation as fallback - newest minus oldest values.
+        """
+        if len(telemetry_data) < 2:
+            return {
+                "delta_twitter_tweets": 0,
+                "delta_twitter_profiles": 0,
+                "delta_web_success": 0,
+                "delta_tiktok_success": 0,
+            }
+
+        # Sort by timestamp (oldest first for delta calculation)
+        sorted_data = sorted(telemetry_data, key=lambda x: x.timestamp)
+        oldest = sorted_data[0]
+        newest = sorted_data[-1]
+
+        def get_platform_metric(data, platform, metric, default=0):
+            """Helper to safely get platform metrics"""
+            if hasattr(data, "platform_metrics") and data.platform_metrics:
+                return data.platform_metrics.get(platform, {}).get(metric, default)
+            return default
+
+        # Calculate time period for context
+        time_span_hours = (newest.timestamp - oldest.timestamp) / 3600
+
+        return {
+            "delta_twitter_tweets": max(
+                0,
+                get_platform_metric(newest, "twitter", "returned_tweets")
+                - get_platform_metric(oldest, "twitter", "returned_tweets"),
+            ),
+            "delta_twitter_profiles": max(
+                0,
+                get_platform_metric(
+                    newest, "twitter-profile-apify", "returned_profiles"
+                )
+                - get_platform_metric(
+                    oldest, "twitter-profile-apify", "returned_profiles"
+                ),
+            ),
+            "delta_web_success": max(
+                0,
+                get_platform_metric(newest, "web", "success")
+                - get_platform_metric(oldest, "web", "success"),
+            ),
+            "delta_tiktok_success": max(
+                0,
+                get_platform_metric(newest, "tiktok", "transcription_success")
+                - get_platform_metric(oldest, "tiktok", "transcription_success"),
+            ),
+            "time_period": f"{time_span_hours:.1f} hours ({len(telemetry_data)} records)",
+            "calculation_method": "Simple delta (newest - oldest)",
+        }
+
+    def register_routes(self) -> None:
+        # Mount static files directory
+        try:
+            self.app.mount("/static", StaticFiles(directory="static"), name="static")
+        except Exception as e:
+            logger.error(f"Failed to mount static files: {str(e)}, cwd: {os.getcwd()}")
+
     def get_api_key_dependency(self) -> Callable:
         """Get a dependency function that checks the API key against config."""
 
@@ -240,6 +428,24 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+        # Add score breakdown endpoint for detailed analysis
+        self.app.add_api_route(
+            "/monitor/score-breakdown/{hotkey}",
+            self.monitor_score_breakdown,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
+        # Add leaderboard endpoint for all miners
+        self.app.add_api_route(
+            "/monitor/leaderboard",
+            self.monitor_leaderboard,
+            methods=["GET"],
+            tags=["monitoring"],
+            dependencies=[Depends(api_key_dependency)],
+        )
+
         # Add weighted priority miners list endpoint
         self.app.add_api_route(
             "/monitor/priority-miners-list",
@@ -407,6 +613,507 @@ class ValidatorAPI:
             dependencies=[Depends(api_key_dependency)],
         )
 
+    async def monitor_score_breakdown(self, hotkey: str):
+        """
+        Provide detailed score breakdown for a specific hotkey.
+        Shows exactly how the score is calculated with platform-specific analysis,
+        global rankings, and contribution details.
+        """
+        try:
+            from validator.weights import WeightsManager
+            from validator.platform_config import PlatformManager
+            import numpy as np
+
+            # Get telemetry data for scoring
+            hours = 24
+            # Get all telemetry data and filter by time
+            all_telemetry_data = self.validator.telemetry_storage.get_all_telemetry()
+
+            # Filter to last N hours
+            import time
+
+            current_time = int(time.time())
+            cutoff_time = current_time - (hours * 3600)  # hours * 3600 seconds
+
+            telemetry_data = []
+            for data in all_telemetry_data:
+                # Handle different timestamp formats
+                data_time = data.timestamp
+                if isinstance(data_time, str):
+                    try:
+                        from datetime import datetime
+
+                        dt = datetime.fromisoformat(data_time.replace(" ", "T"))
+                        data_time = int(dt.timestamp())
+                    except:
+                        continue
+                elif data_time == 0:
+                    # Skip records with no timestamp
+                    continue
+
+                if data_time >= cutoff_time:
+                    telemetry_data.append(data)
+
+            if not telemetry_data:
+                return {
+                    "hotkey": hotkey,
+                    "error": "No telemetry data available",
+                    "hours_analyzed": hours,
+                }
+
+            # Initialize scoring components
+            weights_manager = WeightsManager(self.validator)
+            platform_manager = PlatformManager()
+
+            # Get delta data (same as used in actual scoring)
+            delta_data = weights_manager._get_delta_node_data(telemetry_data)
+
+            # Find the target node
+            target_node = None
+            for node in delta_data:
+                if node.hotkey == hotkey:
+                    target_node = node
+                    break
+
+            if not target_node:
+                return {
+                    "hotkey": hotkey,
+                    "error": "Hotkey not found in current telemetry data",
+                    "available_hotkeys": [
+                        node.hotkey[:16] + "..." for node in delta_data[:5]
+                    ],
+                    "hours_analyzed": hours,
+                }
+
+            # Update platform metrics for all nodes
+            weights_manager._update_platform_metrics(delta_data)
+
+            # Calculate detailed breakdown
+            breakdown = {
+                "hotkey": hotkey,
+                "analysis_timestamp": (
+                    telemetry_data[0].timestamp if telemetry_data else 0
+                ),
+                "hours_analyzed": hours,
+                "total_miners_analyzed": len(delta_data),
+                "platforms": {},
+                "final_score": 0.0,
+                "global_ranking": {"position": 0, "percentile": 0.0},
+                "scoring_methodology": {
+                    "tweets_weight": weights_manager.tweets_weight,
+                    "error_quality_weight": weights_manager.error_quality_weight,
+                    "error_rate_threshold": weights_manager.error_rate_threshold,
+                    "kurtosis_applied": True,
+                },
+            }
+
+            # Calculate platform-specific scores and rankings
+            total_weighted_score = 0.0
+
+            for platform_name in platform_manager.get_platform_names():
+                platform_config = platform_manager.get_platform(platform_name)
+
+                # Calculate score for target node
+                target_platform_score = weights_manager.calculate_platform_score(
+                    target_node, platform_name
+                )
+                weighted_contribution = (
+                    target_platform_score * platform_config.emission_weight
+                )
+                total_weighted_score += weighted_contribution
+
+                # Calculate scores for all nodes for ranking
+                all_platform_scores = []
+                for node in delta_data:
+                    score = weights_manager.calculate_platform_score(
+                        node, platform_name
+                    )
+                    all_platform_scores.append(score)
+
+                # Calculate rankings
+                all_platform_scores = np.array(all_platform_scores)
+                target_rank = np.sum(all_platform_scores > target_platform_score) + 1
+                percentile = (
+                    (len(all_platform_scores) - target_rank + 1)
+                    / len(all_platform_scores)
+                ) * 100
+
+                # Get target node's platform metrics
+                target_metrics = target_node.platform_metrics.get(platform_name, {})
+
+                # Calculate success and error details
+                success_total = sum(
+                    target_metrics.get(metric, 0)
+                    for metric in platform_config.success_metrics
+                )
+                error_total = sum(
+                    target_metrics.get(metric, 0)
+                    for metric in platform_config.error_metrics
+                )
+
+                # Calculate error rate
+                time_span_seconds = getattr(target_node, "time_span_seconds", 0)
+                if time_span_seconds > 0:
+                    hours_span = time_span_seconds / 3600
+                    error_rate = error_total / hours_span
+                else:
+                    error_rate = float("inf") if error_total > 0 else 0.0
+
+                error_quality = (
+                    1.0 / (1.0 + error_rate) if error_rate != float("inf") else 0.0
+                )
+
+                # BUG FIX: Only give error quality score when there's actual activity
+                # If no success metrics, error quality should be 0 (inactive miners get 0 score)
+                if success_total == 0:
+                    error_quality = 0.0
+
+                # Combined score calculation (tweets_weight * success + error_quality_weight * error_quality)
+                combined_score = (
+                    weights_manager.tweets_weight * success_total
+                    + weights_manager.error_quality_weight * error_quality
+                )
+
+                breakdown["platforms"][platform_name] = {
+                    "platform_score": round(target_platform_score, 4),
+                    "emission_weight": platform_config.emission_weight,
+                    "weighted_contribution": round(weighted_contribution, 4),
+                    "global_ranking": {
+                        "position": int(target_rank),
+                        "out_of": len(delta_data),
+                        "percentile": round(percentile, 1),
+                    },
+                    "metrics_breakdown": {
+                        "success_metrics": {
+                            metric: target_metrics.get(metric, 0)
+                            for metric in platform_config.success_metrics
+                        },
+                        "error_metrics": {
+                            metric: target_metrics.get(metric, 0)
+                            for metric in platform_config.error_metrics
+                        },
+                        "success_total": success_total,
+                        "error_total": error_total,
+                        "error_rate_per_hour": round(
+                            error_rate if error_rate != float("inf") else 0, 2
+                        ),
+                        "error_quality_score": round(error_quality, 4),
+                        "exceeds_error_threshold": error_rate
+                        > weights_manager.error_rate_threshold,
+                    },
+                    "score_calculation": {
+                        "success_component": round(
+                            weights_manager.tweets_weight * success_total, 4
+                        ),
+                        "error_quality_component": round(
+                            weights_manager.error_quality_weight * error_quality, 4
+                        ),
+                        "raw_combined_score": round(combined_score, 4),
+                        "explanation": f"({weights_manager.tweets_weight} × {success_total}) + ({weights_manager.error_quality_weight} × {round(error_quality, 4)}) = {round(combined_score, 4)}",
+                    },
+                }
+
+            # Calculate final score with kurtosis
+            all_combined_scores = []
+            for node in delta_data:
+                node_total = 0.0
+                for platform_name in platform_manager.get_platform_names():
+                    platform_config = platform_manager.get_platform(platform_name)
+                    platform_score = weights_manager.calculate_platform_score(
+                        node, platform_name
+                    )
+                    node_total += platform_score * platform_config.emission_weight
+                all_combined_scores.append(node_total)
+
+            # Apply kurtosis to get final scores
+            from validator.weights import apply_kurtosis_custom
+
+            final_scores = apply_kurtosis_custom(np.array(all_combined_scores))
+
+            # Find target node's final score and ranking
+            target_final_score = 0.0
+            for idx, node in enumerate(delta_data):
+                if node.hotkey == hotkey:
+                    target_final_score = final_scores[idx]
+                    break
+
+            final_rank = np.sum(final_scores > target_final_score) + 1
+            final_percentile = (
+                (len(final_scores) - final_rank + 1) / len(final_scores)
+            ) * 100
+
+            breakdown["final_score"] = round(float(target_final_score), 4)
+            breakdown["pre_kurtosis_score"] = round(total_weighted_score, 4)
+            breakdown["global_ranking"] = {
+                "position": int(final_rank),
+                "out_of": len(delta_data),
+                "percentile": round(final_percentile, 1),
+            }
+
+            # Add summary explanation
+            breakdown["summary"] = {
+                "explanation": f"Final score of {breakdown['final_score']} achieved through:",
+                "contributions": [
+                    f"{platform}: {data['weighted_contribution']} (rank #{data['global_ranking']['position']}/{data['global_ranking']['out_of']})"
+                    for platform, data in breakdown["platforms"].items()
+                    if data["weighted_contribution"] > 0
+                ],
+                "kurtosis_effect": f"Kurtosis curve applied: {breakdown['pre_kurtosis_score']} → {breakdown['final_score']}",
+            }
+
+            return breakdown
+
+        except Exception as e:
+            logger.error(f"Failed to generate score breakdown for {hotkey}: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
+            return {
+                "hotkey": hotkey,
+                "error": f"Failed to generate breakdown: {str(e)}",
+                "traceback": traceback.format_exc(),
+            }
+
+    async def monitor_leaderboard(
+        self, hours: int = 24, limit: int = 1000, sort_by: str = "final_score"
+    ):
+        """
+        Get comprehensive leaderboard with score breakdowns for all miners.
+        Shows detailed scoring information for the entire network.
+
+        Args:
+            hours: Hours of telemetry data to analyze (default: 24)
+            limit: Maximum number of miners to return (default: 1000, use 0 for ALL miners)
+            sort_by: Sort criteria - "final_score", "total_activity", "total_weighted_score" (default: "final_score")
+        """
+        try:
+            from validator.weights import WeightsManager, apply_kurtosis_custom
+            from validator.platform_config import PlatformManager
+            import numpy as np
+            import time
+
+            logger.info(
+                f"Generating leaderboard for {hours}h with limit {limit}, sorted by {sort_by}"
+            )
+
+            # Get telemetry data for scoring
+            all_telemetry_data = self.validator.telemetry_storage.get_all_telemetry()
+
+            # Filter to last N hours
+            current_time = int(time.time())
+            cutoff_time = current_time - (hours * 3600)
+
+            telemetry_data = []
+            for data in all_telemetry_data:
+                # Handle different timestamp formats
+                data_time = data.timestamp
+                if isinstance(data_time, str):
+                    try:
+                        from datetime import datetime
+
+                        dt = datetime.fromisoformat(data_time.replace(" ", "T"))
+                        data_time = int(dt.timestamp())
+                    except:
+                        continue
+                elif data_time == 0:
+                    continue
+
+                if data_time >= cutoff_time:
+                    telemetry_data.append(data)
+
+            if not telemetry_data:
+                return {
+                    "error": "No telemetry data available for the specified time period",
+                    "hours_analyzed": hours,
+                    "leaderboard": [],
+                }
+
+            # Initialize scoring components
+            weights_manager = WeightsManager(self.validator)
+            platform_manager = PlatformManager()
+
+            # Get delta data (same as used in actual scoring)
+            delta_data = weights_manager._get_delta_node_data(telemetry_data)
+
+            if not delta_data:
+                return {
+                    "error": "No delta data available",
+                    "hours_analyzed": hours,
+                    "leaderboard": [],
+                }
+
+            # Calculate scores for all miners
+            leaderboard = []
+
+            for target_node in delta_data:
+                miner_data = {
+                    "hotkey": target_node.hotkey,
+                    "uid": getattr(target_node, "uid", "unknown"),
+                    "platforms": {},
+                    "total_activity": 0,
+                    "total_weighted_score": 0.0,
+                    "final_score": 0.0,
+                }
+
+                # Calculate platform-specific scores
+                for platform_name in platform_manager.get_platform_names():
+                    platform_config = platform_manager.get_platform(platform_name)
+                    target_metrics = target_node.platform_metrics.get(platform_name, {})
+
+                    # Calculate totals for this platform
+                    success_total = sum(
+                        target_metrics.get(m, 0)
+                        for m in platform_config.success_metrics
+                    )
+                    error_total = sum(
+                        target_metrics.get(m, 0) for m in platform_config.error_metrics
+                    )
+
+                    # Calculate error rate
+                    time_span_seconds = getattr(target_node, "time_span_seconds", 0)
+                    if time_span_seconds > 0:
+                        hours_span = time_span_seconds / 3600
+                        error_rate = error_total / hours_span
+                    else:
+                        error_rate = float("inf") if error_total > 0 else 0.0
+
+                    error_quality = (
+                        1.0 / (1.0 + error_rate) if error_rate != float("inf") else 0.0
+                    )
+
+                    # Apply the same bug fix as in scoring
+                    if success_total == 0:
+                        error_quality = 0.0
+
+                    # Combined score calculation
+                    combined_score = (
+                        weights_manager.tweets_weight * success_total
+                        + weights_manager.error_quality_weight * error_quality
+                    )
+
+                    # Get platform score from actual scoring system
+                    platform_score = weights_manager.calculate_platform_score(
+                        target_node, platform_name
+                    )
+                    weighted_contribution = (
+                        platform_score * platform_config.emission_weight
+                    )
+
+                    miner_data["platforms"][platform_name] = {
+                        "success_total": success_total,
+                        "error_total": error_total,
+                        "error_rate_per_hour": round(
+                            error_rate if error_rate != float("inf") else 0, 2
+                        ),
+                        "error_quality": round(error_quality, 4),
+                        "platform_score": round(platform_score, 4),
+                        "emission_weight": platform_config.emission_weight,
+                        "weighted_contribution": round(weighted_contribution, 4),
+                        "exceeds_error_threshold": error_rate
+                        > weights_manager.error_rate_threshold,
+                    }
+
+                    # Add to totals
+                    miner_data["total_activity"] += success_total
+                    miner_data["total_weighted_score"] += weighted_contribution
+
+                # Calculate final score with kurtosis (same as actual scoring)
+                all_combined_scores = [
+                    node.get_stat_value("combined_score", 0) for node in delta_data
+                ]
+
+                if len(all_combined_scores) > 1 and any(
+                    score > 0 for score in all_combined_scores
+                ):
+                    try:
+                        kurtosis_scores = apply_kurtosis_custom(
+                            np.array(all_combined_scores)
+                        )
+                        # Find this miner's position in delta_data to get corresponding kurtosis score
+                        for i, node in enumerate(delta_data):
+                            if node.hotkey == target_node.hotkey:
+                                miner_data["final_score"] = round(
+                                    float(kurtosis_scores[i]), 6
+                                )
+                                break
+                    except Exception as e:
+                        logger.warning(
+                            f"Kurtosis calculation failed for {target_node.hotkey}: {e}"
+                        )
+                        miner_data["final_score"] = round(
+                            miner_data["total_weighted_score"], 6
+                        )
+                else:
+                    miner_data["final_score"] = round(
+                        miner_data["total_weighted_score"], 6
+                    )
+
+                leaderboard.append(miner_data)
+
+            # Sort leaderboard based on criteria
+            if sort_by == "total_activity":
+                leaderboard.sort(key=lambda x: x["total_activity"], reverse=True)
+            elif sort_by == "total_weighted_score":
+                leaderboard.sort(key=lambda x: x["total_weighted_score"], reverse=True)
+            else:  # default: final_score
+                leaderboard.sort(key=lambda x: x["final_score"], reverse=True)
+
+            # Handle limit=0 as "return all miners"
+            if limit == 0:
+                returned_leaderboard = leaderboard
+                returned_count = len(leaderboard)
+                limit_description = "ALL"
+            else:
+                returned_leaderboard = leaderboard[:limit]
+                returned_count = min(limit, len(leaderboard))
+                limit_description = str(limit)
+
+            # Add rankings
+            for i, miner in enumerate(returned_leaderboard):
+                miner["rank"] = i + 1
+
+            return {
+                "success": True,
+                "hours_analyzed": hours,
+                "cutoff_time": cutoff_time,
+                "analysis_time": current_time,
+                "total_miners": len(leaderboard),
+                "returned_miners": returned_count,
+                "limit_applied": limit_description,
+                "sort_criteria": sort_by,
+                "summary": {
+                    "active_miners": len(
+                        [m for m in leaderboard if m["total_activity"] > 0]
+                    ),
+                    "total_network_activity": sum(
+                        m["total_activity"] for m in leaderboard
+                    ),
+                    "average_final_score": (
+                        round(
+                            sum(m["final_score"] for m in leaderboard)
+                            / len(leaderboard),
+                            4,
+                        )
+                        if leaderboard
+                        else 0
+                    ),
+                    "top_score": leaderboard[0]["final_score"] if leaderboard else 0,
+                    "platforms_analyzed": list(platform_manager.get_platform_names()),
+                },
+                "leaderboard": returned_leaderboard,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate leaderboard: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
+            return {
+                "error": f"Failed to generate leaderboard: {str(e)}",
+                "traceback": traceback.format_exc(),
+                "leaderboard": [],
+            }
+
     async def healthcheck(self):
         # Implement the healthcheck logic for the validator
         return self.validator.healthcheck()
@@ -490,34 +1197,10 @@ class ValidatorAPI:
                 hotkey
             )
 
-            # Convert NodeData objects to dictionaries
+            # Convert NodeData objects to dictionaries using dynamic approach
             telemetry_dict_list = []
             for data in telemetry_data:
-                telemetry_dict = {
-                    "hotkey": data.hotkey,
-                    "uid": data.uid,
-                    "timestamp": data.timestamp,
-                    "boot_time": data.boot_time,
-                    "last_operation_time": data.last_operation_time,
-                    "current_time": data.current_time,
-                    "twitter_auth_errors": data.twitter_auth_errors,
-                    "twitter_errors": data.twitter_errors,
-                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
-                    "twitter_returned_other": data.twitter_returned_other,
-                    "twitter_returned_profiles": data.twitter_returned_profiles,
-                    "twitter_returned_tweets": data.twitter_returned_tweets,
-                    "twitter_scrapes": data.twitter_scrapes,
-                    "web_errors": data.web_errors,
-                    "web_success": data.web_success,
-                    "tiktok_transcription_success": getattr(
-                        data, "tiktok_transcription_success", 0
-                    ),
-                    "tiktok_transcription_errors": getattr(
-                        data, "tiktok_transcription_errors", 0
-                    ),
-                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
-                }
-                telemetry_dict_list.append(telemetry_dict)
+                telemetry_dict_list.append(self._nodedata_to_dict(data))
 
             return {
                 "hotkey": hotkey,
@@ -1114,49 +1797,18 @@ class ValidatorAPI:
                     "telemetry_data": [],
                 }
 
-            # Convert NodeData objects to dictionaries with clean structure
+            # Convert NodeData objects to dictionaries with structured format
             telemetry_dict_list = []
             for data in telemetry_data:
-                telemetry_dict = {
-                    "hotkey": data.hotkey,
-                    "uid": data.uid,
-                    "worker_id": (
-                        data.worker_id if hasattr(data, "worker_id") else None
-                    ),
-                    "timestamp": data.timestamp,
-                    "timing": {
-                        "boot_time": data.boot_time,
-                        "last_operation_time": data.last_operation_time,
-                        "current_time": data.current_time,
-                    },
-                    "twitter_metrics": {
-                        "auth_errors": data.twitter_auth_errors,
-                        "errors": data.twitter_errors,
-                        "ratelimit_errors": data.twitter_ratelimit_errors,
-                        "returned_other": data.twitter_returned_other,
-                        "returned_profiles": data.twitter_returned_profiles,
-                        "returned_tweets": data.twitter_returned_tweets,
-                        "scrapes": data.twitter_scrapes,
-                    },
-                    "web_metrics": {
-                        "errors": data.web_errors,
-                        "success": data.web_success,
-                    },
-                    "tiktok_metrics": {
-                        "transcription_success": getattr(
-                            data, "tiktok_transcription_success", 0
-                        ),
-                        "transcription_errors": getattr(
-                            data, "tiktok_transcription_errors", 0
-                        ),
-                    },
-                }
-                telemetry_dict_list.append(telemetry_dict)
+                telemetry_dict_list.append(self._nodedata_to_dict(data, "structured"))
 
             # Sort by timestamp (most recent first)
             telemetry_dict_list.sort(key=lambda x: x["timestamp"], reverse=True)
 
-            # Get latest record for summary
+            # Calculate delta summary (changes over time)
+            delta_summary = self._calculate_delta_summary(telemetry_data)
+
+            # Get latest record for metadata
             latest = telemetry_dict_list[0] if telemetry_dict_list else None
 
             return {
@@ -1165,22 +1817,7 @@ class ValidatorAPI:
                 "count": len(telemetry_dict_list),
                 "latest_timestamp": latest["timestamp"] if latest else None,
                 "worker_id": latest["worker_id"] if latest else None,
-                "summary": {
-                    "total_twitter_tweets": (
-                        latest["twitter_metrics"]["returned_tweets"] if latest else 0
-                    ),
-                    "total_twitter_profiles": (
-                        latest["twitter_metrics"]["returned_profiles"] if latest else 0
-                    ),
-                    "total_web_success": (
-                        latest["web_metrics"]["success"] if latest else 0
-                    ),
-                    "total_tiktok_success": (
-                        latest["tiktok_metrics"]["transcription_success"]
-                        if latest
-                        else 0
-                    ),
-                },
+                "summary": delta_summary,
                 "telemetry_data": telemetry_dict_list,
             }
 
@@ -1543,34 +2180,10 @@ class ValidatorAPI:
                 self.validator.telemetry_storage.get_all_telemetry_postgresql(limit)
             )
 
-            # Convert NodeData objects to dictionaries
+            # Convert NodeData objects to dictionaries using dynamic approach
             telemetry_dict_list = []
             for data in telemetry_data:
-                telemetry_dict = {
-                    "hotkey": data.hotkey,
-                    "uid": data.uid,
-                    "timestamp": data.timestamp,
-                    "boot_time": data.boot_time,
-                    "last_operation_time": data.last_operation_time,
-                    "current_time": data.current_time,
-                    "twitter_auth_errors": data.twitter_auth_errors,
-                    "twitter_errors": data.twitter_errors,
-                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
-                    "twitter_returned_other": data.twitter_returned_other,
-                    "twitter_returned_profiles": data.twitter_returned_profiles,
-                    "twitter_returned_tweets": data.twitter_returned_tweets,
-                    "twitter_scrapes": data.twitter_scrapes,
-                    "web_errors": data.web_errors,
-                    "web_success": data.web_success,
-                    "tiktok_transcription_success": getattr(
-                        data, "tiktok_transcription_success", 0
-                    ),
-                    "tiktok_transcription_errors": getattr(
-                        data, "tiktok_transcription_errors", 0
-                    ),
-                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
-                }
-                telemetry_dict_list.append(telemetry_dict)
+                telemetry_dict_list.append(self._nodedata_to_dict(data))
 
             return {
                 "count": len(telemetry_dict_list),
@@ -1602,34 +2215,10 @@ class ValidatorAPI:
                 )
             )
 
-            # Convert NodeData objects to dictionaries
+            # Convert NodeData objects to dictionaries using dynamic approach
             telemetry_dict_list = []
             for data in telemetry_data:
-                telemetry_dict = {
-                    "hotkey": data.hotkey,
-                    "uid": data.uid,
-                    "timestamp": data.timestamp,
-                    "boot_time": data.boot_time,
-                    "last_operation_time": data.last_operation_time,
-                    "current_time": data.current_time,
-                    "twitter_auth_errors": data.twitter_auth_errors,
-                    "twitter_errors": data.twitter_errors,
-                    "twitter_ratelimit_errors": data.twitter_ratelimit_errors,
-                    "twitter_returned_other": data.twitter_returned_other,
-                    "twitter_returned_profiles": data.twitter_returned_profiles,
-                    "twitter_returned_tweets": data.twitter_returned_tweets,
-                    "twitter_scrapes": data.twitter_scrapes,
-                    "web_errors": data.web_errors,
-                    "web_success": data.web_success,
-                    "tiktok_transcription_success": getattr(
-                        data, "tiktok_transcription_success", 0
-                    ),
-                    "tiktok_transcription_errors": getattr(
-                        data, "tiktok_transcription_errors", 0
-                    ),
-                    "worker_id": data.worker_id if hasattr(data, "worker_id") else None,
-                }
-                telemetry_dict_list.append(telemetry_dict)
+                telemetry_dict_list.append(self._nodedata_to_dict(data))
 
             return {
                 "hotkey": hotkey,

@@ -2,7 +2,6 @@ from db.telemetry_database import TelemetryDatabase
 from db.postgresql_telemetry_database import PostgreSQLTelemetryDatabase
 import sqlite3
 from fiber.logging_utils import get_logger
-from interfaces.types import NodeData
 import os
 
 logger = get_logger(__name__)
@@ -96,28 +95,8 @@ class TelemetryStorage:
         TelemetryDatabase method. Returns a list of NodeData objects.
         """
         try:
-            telemetry_data = self.db.get_telemetry_by_hotkey(hotkey)
-            return [
-                NodeData(
-                    hotkey=row[0],
-                    uid=row[1],
-                    boot_time=row[3],
-                    last_operation_time=row[4],
-                    current_time=row[5],
-                    twitter_auth_errors=row[6],
-                    twitter_errors=row[7],
-                    twitter_ratelimit_errors=row[8],
-                    twitter_returned_other=row[9],
-                    twitter_returned_profiles=row[10],
-                    twitter_returned_tweets=row[11],
-                    twitter_scrapes=row[12],
-                    web_errors=row[13],
-                    web_success=row[14],
-                    timestamp=row[2],
-                    worker_id=row[15],
-                )
-                for row in telemetry_data
-            ]
+            # The database now returns NodeData objects directly
+            return self.db.get_telemetry_by_hotkey(hotkey)
         except sqlite3.Error as e:
             logger.error(f"Failed to retrieve telemetry for hotkey {hotkey}: {e}")
             return []
@@ -132,34 +111,8 @@ class TelemetryStorage:
             return []
 
         try:
-            telemetry_data = self.postgres_db.get_telemetry_by_hotkey(hotkey)
-            return [
-                NodeData(
-                    hotkey=row["hotkey"],
-                    uid=row["uid"],
-                    boot_time=row["boot_time"],
-                    last_operation_time=row["last_operation_time"],
-                    current_time=row["current_time"],
-                    twitter_auth_errors=row["twitter_auth_errors"],
-                    twitter_errors=row["twitter_errors"],
-                    twitter_ratelimit_errors=row["twitter_ratelimit_errors"],
-                    twitter_returned_other=row["twitter_returned_other"],
-                    twitter_returned_profiles=row["twitter_returned_profiles"],
-                    twitter_returned_tweets=row["twitter_returned_tweets"],
-                    twitter_scrapes=row["twitter_scrapes"],
-                    web_errors=row["web_errors"],
-                    web_success=row["web_success"],
-                    timestamp=row["timestamp"],
-                    worker_id=row["worker_id"],
-                    tiktok_transcription_success=row.get(
-                        "tiktok_transcription_success", 0
-                    ),
-                    tiktok_transcription_errors=row.get(
-                        "tiktok_transcription_errors", 0
-                    ),
-                )
-                for row in telemetry_data
-            ]
+            # The PostgreSQL database now returns NodeData objects directly
+            return self.postgres_db.get_telemetry_by_hotkey(hotkey)
         except Exception as e:
             logger.error(
                 f"Failed to retrieve PostgreSQL telemetry for hotkey {hotkey}: {e}"
@@ -215,30 +168,8 @@ class TelemetryStorage:
         Returns a list of NodeData objects.
         """
         try:
-            telemetry_data = self.db.get_all_telemetry()
-            return [
-                NodeData(
-                    hotkey=row[0],
-                    uid=row[1],
-                    boot_time=row[3],
-                    last_operation_time=row[4],
-                    current_time=row[5],
-                    twitter_auth_errors=row[6],
-                    twitter_errors=row[7],
-                    twitter_ratelimit_errors=row[8],
-                    twitter_returned_other=row[9],
-                    twitter_returned_profiles=row[10],
-                    twitter_returned_tweets=row[11],
-                    twitter_scrapes=row[12],
-                    web_errors=row[13],
-                    web_success=row[14],
-                    timestamp=row[2],
-                    worker_id=row[15] if len(row) > 15 else None,
-                    tiktok_transcription_success=row[16] if len(row) > 16 else 0,
-                    tiktok_transcription_errors=row[17] if len(row) > 17 else 0,
-                )
-                for row in telemetry_data
-            ]
+            # The database now returns NodeData objects directly
+            return self.db.get_all_telemetry()
         except sqlite3.Error as e:
             logger.error(f"Failed to retrieve all telemetry: {e}")
             return []
@@ -253,34 +184,8 @@ class TelemetryStorage:
             return []
 
         try:
-            telemetry_data = self.postgres_db.get_all_telemetry(limit)
-            return [
-                NodeData(
-                    hotkey=row["hotkey"],
-                    uid=row["uid"],
-                    boot_time=row["boot_time"],
-                    last_operation_time=row["last_operation_time"],
-                    current_time=row["current_time"],
-                    twitter_auth_errors=row["twitter_auth_errors"],
-                    twitter_errors=row["twitter_errors"],
-                    twitter_ratelimit_errors=row["twitter_ratelimit_errors"],
-                    twitter_returned_other=row["twitter_returned_other"],
-                    twitter_returned_profiles=row["twitter_returned_profiles"],
-                    twitter_returned_tweets=row["twitter_returned_tweets"],
-                    twitter_scrapes=row["twitter_scrapes"],
-                    web_errors=row["web_errors"],
-                    web_success=row["web_success"],
-                    timestamp=row["timestamp"],
-                    worker_id=row["worker_id"],
-                    tiktok_transcription_success=row.get(
-                        "tiktok_transcription_success", 0
-                    ),
-                    tiktok_transcription_errors=row.get(
-                        "tiktok_transcription_errors", 0
-                    ),
-                )
-                for row in telemetry_data
-            ]
+            # The PostgreSQL database now returns NodeData objects directly
+            return self.postgres_db.get_all_telemetry(limit)
         except Exception as e:
             logger.error(f"Failed to retrieve all PostgreSQL telemetry: {e}")
             return []

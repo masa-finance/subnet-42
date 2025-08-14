@@ -31,13 +31,26 @@ class NodeManager:
         self.errors_storage = ErrorsStorage()
 
         # Schedule error logs cleanup based on retention period
-        asyncio.create_task(self.run_periodic_error_cleanup())
+        cleanup_task = asyncio.create_task(self.run_periodic_error_cleanup())
+        # Register the task with validator for graceful shutdown
+        if hasattr(validator, "add_background_task"):
+            validator.add_background_task(cleanup_task)
 
     async def run_periodic_error_cleanup(self):
         """Run periodic cleanup of error logs based on retention period."""
         cleanup_interval_hours = 6  # Run cleanup every 6 hours
         while True:
             try:
+                # Check for shutdown signal
+                if (
+                    hasattr(self.validator, "shutdown_event")
+                    and self.validator.shutdown_event.is_set()
+                ):
+                    logger.info(
+                        "Error cleanup loop received shutdown signal, exiting..."
+                    )
+                    break
+
                 # Wait for first interval
                 await asyncio.sleep(cleanup_interval_hours * 3600)
 
@@ -45,6 +58,9 @@ class NodeManager:
                 count = self.errors_storage.clean_errors_based_on_retention()
                 logger.info(f"Scheduled error logs cleanup removed {count} old entries")
 
+            except asyncio.CancelledError:
+                logger.info("Error cleanup loop cancelled, exiting gracefully...")
+                break
             except Exception as e:
                 logger.error(f"Error during scheduled error logs cleanup: {str(e)}")
                 await asyncio.sleep(3600)  # Wait one hour and try again
@@ -355,6 +371,7 @@ class NodeManager:
             else:
                 logger.debug(f"No TEE addresses found for hotkey {hotkey}")
                 # If a node has no TEE addresses, mark all its current entries for cleanup
+                current_tees = routing_table.get_miner_addresses(hotkey=hotkey)
                 for address, _ in current_tees if current_tees else []:
                     logger.info(
                         f"Marking {address} for cleanup (no TEE addresses provided)"
