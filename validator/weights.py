@@ -215,6 +215,15 @@ class WeightsManager:
         # Convert error rate to quality score
         error_quality = 1.0 / (1.0 + error_rate)
 
+        # BUG FIX: Only give error quality score when there's actual activity
+        # If no success metrics, error quality should be 0 (inactive miners get 0 score)
+        if success_score == 0:
+            error_quality = 0.0
+            logger.debug(
+                f"Node {node.hotkey} platform {platform_name}: No success metrics, "
+                f"setting error_quality to 0 (inactive miner)"
+            )
+
         # Combine success and error quality scores
         combined_score = (
             success_score * self.tweets_weight
@@ -260,11 +269,49 @@ class WeightsManager:
                     "transcription_errors": tiktok_errors,
                 }
 
+    def _validate_source_id(self, record: NodeData) -> bool:
+        """
+        Validate source ID for telemetry record during delta calculation.
+        This replaces the validation that was previously done before storage.
+        """
+        # Extract raw platform_metrics from stats_json for source ID validation
+        # We need the raw platform_metrics which has worker IDs as keys, not the processed ones
+        platform_metrics = {}
+        if record.stats_json:
+            platform_metrics = record.stats_json.get("platform_metrics", {})
+
+        # If no platform_metrics, consider it valid (legacy data)
+        if not platform_metrics:
+            return True
+
+        # Check if we have an active stat worker configured
+        if not hasattr(self.validator, "scorer") or not hasattr(
+            self.validator.scorer, "active_stat_name"
+        ):
+            return True
+
+        active_stat_name = getattr(self.validator.scorer, "active_stat_name", None)
+        if active_stat_name is None:
+            return True
+
+        # Validate that stats come from the correct source worker
+        # In raw platform_metrics, the outer keys are worker IDs
+        for worker_id, worker_stats in platform_metrics.items():
+            if isinstance(worker_stats, dict):
+                # The worker_id (outer key) should match active_stat_name
+                if worker_id != active_stat_name:
+                    logger.debug(
+                        f"Invalid source worker {worker_id}, expected {active_stat_name}"
+                    )
+                    return False
+
+        return True
+
     def _get_delta_node_data(self, telemetry_data: List[NodeData]) -> List[NodeData]:
         """
         Get telemetry data and calculate deltas between latest and oldest
         records. When TEE restarts are detected (negative deltas), split into
-        chunks and sum them.
+        chunks and sum them. Source ID validation is performed here.
 
         :param telemetry_data: List of NodeData objects from get_all_telemetry()
         :return: List of NodeData objects containing delta values.
@@ -274,6 +321,13 @@ class WeightsManager:
         # Group telemetry data by hotkey
         telemetry_by_hotkey = {}
         for record in telemetry_data:
+            # Validate source ID during delta calculation (not before storage)
+            if not self._validate_source_id(record):
+                logger.debug(
+                    f"Skipping record for {record.hotkey} due to invalid source ID"
+                )
+                continue
+
             if record.hotkey not in telemetry_by_hotkey:
                 telemetry_by_hotkey[record.hotkey] = []
             telemetry_by_hotkey[record.hotkey].append(record)
@@ -298,15 +352,20 @@ class WeightsManager:
                 )
 
                 # Split telemetry into chunks based on worker restarts
-                # (when twitter_returned_tweets decreases)
+                # Use twitter_returned_tweets as the restart indicator (legacy compatibility)
                 chunks = []
                 chunk_start = 0
 
                 for i in range(1, len(sorted_telemetry)):
-                    if (
-                        sorted_telemetry[i].twitter_returned_tweets
-                        < sorted_telemetry[i - 1].twitter_returned_tweets
-                    ):
+                    # Check for restart by looking at twitter_returned_tweets decrease
+                    current_tweets = sorted_telemetry[i].get_stat_value(
+                        "twitter_returned_tweets", 0
+                    )
+                    prev_tweets = sorted_telemetry[i - 1].get_stat_value(
+                        "twitter_returned_tweets", 0
+                    )
+
+                    if current_tweets < prev_tweets:
                         # Worker restart detected, end current chunk
                         chunks.append(
                             (chunk_start, i - 1)
@@ -322,17 +381,16 @@ class WeightsManager:
 
                 logger.debug(f"Created {len(chunks)} chunks for {hotkey}: {chunks}")
 
-                # Calculate deltas for each chunk and sum them up
-                total_delta_twitter_auth_errors = 0
-                total_delta_twitter_errors = 0
-                total_delta_twitter_ratelimit_errors = 0
-                total_delta_twitter_returned_profiles = 0
-                total_delta_twitter_returned_tweets = 0
-                total_delta_twitter_scrapes = 0
-                total_delta_web_errors = 0
-                total_delta_web_success = 0
-                total_delta_tiktok_transcription_success = 0
-                total_delta_tiktok_transcription_errors = 0
+                # Calculate deltas for each chunk and sum them up dynamically
+                from validator.platform_config import PlatformManager
+
+                platform_manager = PlatformManager()
+                all_raw_fields = platform_manager.get_all_raw_field_names()
+
+                # Initialize dynamic delta totals
+                total_deltas = {}
+                for field in all_raw_fields:
+                    total_deltas[field] = 0
                 total_time_span_seconds = 0
 
                 for chunk_start_idx, chunk_end_idx in chunks:
@@ -353,144 +411,68 @@ class WeightsManager:
                     chunk_time_span = chunk_end_timestamp - chunk_start_timestamp
                     total_time_span_seconds += chunk_time_span
 
-                    # Calculate deltas for this chunk
-                    chunk_delta_twitter_auth_errors = max(
-                        0,
-                        chunk_end_record.twitter_auth_errors
-                        - chunk_start_record.twitter_auth_errors,
-                    )
-                    chunk_delta_twitter_errors = max(
-                        0,
-                        chunk_end_record.twitter_errors
-                        - chunk_start_record.twitter_errors,
-                    )
-                    chunk_delta_twitter_ratelimit_errors = max(
-                        0,
-                        chunk_end_record.twitter_ratelimit_errors
-                        - chunk_start_record.twitter_ratelimit_errors,
-                    )
-                    chunk_delta_twitter_returned_profiles = max(
-                        0,
-                        chunk_end_record.twitter_returned_profiles
-                        - chunk_start_record.twitter_returned_profiles,
-                    )
-                    chunk_delta_twitter_returned_tweets = max(
-                        0,
-                        chunk_end_record.twitter_returned_tweets
-                        - chunk_start_record.twitter_returned_tweets,
-                    )
-                    chunk_delta_twitter_scrapes = max(
-                        0,
-                        chunk_end_record.twitter_scrapes
-                        - chunk_start_record.twitter_scrapes,
-                    )
-                    chunk_delta_web_errors = max(
-                        0,
-                        chunk_end_record.web_errors - chunk_start_record.web_errors,
-                    )
-                    chunk_delta_web_success = max(
-                        0,
-                        chunk_end_record.web_success - chunk_start_record.web_success,
-                    )
-                    chunk_delta_tiktok_transcription_success = max(
-                        0,
-                        getattr(chunk_end_record, "tiktok_transcription_success", 0)
-                        - getattr(
-                            chunk_start_record, "tiktok_transcription_success", 0
-                        ),
-                    )
-                    chunk_delta_tiktok_transcription_errors = max(
-                        0,
-                        getattr(chunk_end_record, "tiktok_transcription_errors", 0)
-                        - getattr(chunk_start_record, "tiktok_transcription_errors", 0),
-                    )
+                    # Calculate deltas for this chunk dynamically
+                    chunk_deltas = {}
+                    for field in all_raw_fields:
+                        start_value = chunk_start_record.get_stat_value(field, 0)
+                        end_value = chunk_end_record.get_stat_value(field, 0)
+                        chunk_deltas[field] = max(0, end_value - start_value)
 
-                    # Sum up the deltas from all chunks
-                    total_delta_twitter_auth_errors += chunk_delta_twitter_auth_errors
-                    total_delta_twitter_errors += chunk_delta_twitter_errors
-                    total_delta_twitter_ratelimit_errors += (
-                        chunk_delta_twitter_ratelimit_errors
-                    )
-                    total_delta_twitter_returned_profiles += (
-                        chunk_delta_twitter_returned_profiles
-                    )
-                    total_delta_twitter_returned_tweets += (
-                        chunk_delta_twitter_returned_tweets
-                    )
-                    total_delta_twitter_scrapes += chunk_delta_twitter_scrapes
-                    total_delta_web_errors += chunk_delta_web_errors
-                    total_delta_web_success += chunk_delta_web_success
-                    total_delta_tiktok_transcription_success += (
-                        chunk_delta_tiktok_transcription_success
-                    )
-                    total_delta_tiktok_transcription_errors += (
-                        chunk_delta_tiktok_transcription_errors
-                    )
+                    # Sum up the deltas from all chunks dynamically
+                    for field in all_raw_fields:
+                        total_deltas[field] += chunk_deltas[field]
 
                     logger.debug(
                         f"Chunk {chunk_start_idx}-{chunk_end_idx} for {hotkey}: "
-                        f"tweets={chunk_delta_twitter_returned_tweets}, "
-                        f"scrapes={chunk_delta_twitter_scrapes}, "
-                        f"web_success={chunk_delta_web_success}"
+                        f"deltas={chunk_deltas}"
                     )
 
-                # Use the summed deltas
-                delta_boot_time = 0  # Not used in batch mode
-                delta_last_operation_time = 0  # Not used in batch mode
-                delta_twitter_returned_other = 0  # Not used in batch mode
-                delta_twitter_auth_errors = total_delta_twitter_auth_errors
-                delta_twitter_errors = total_delta_twitter_errors
-                delta_twitter_ratelimit_errors = total_delta_twitter_ratelimit_errors
-                delta_twitter_returned_profiles = total_delta_twitter_returned_profiles
-                delta_twitter_returned_tweets = total_delta_twitter_returned_tweets
-                delta_twitter_scrapes = total_delta_twitter_scrapes
-                delta_web_errors = total_delta_web_errors
-                delta_web_success = total_delta_web_success
-                delta_tiktok_transcription_success = (
-                    total_delta_tiktok_transcription_success
-                )
-                delta_tiktok_transcription_errors = (
-                    total_delta_tiktok_transcription_errors
+                # Use the summed deltas - create dynamic stats JSON
+                delta_stats_json = total_deltas.copy()
+
+                # Extract platform metrics from delta stats
+                delta_platform_metrics = (
+                    platform_manager.extract_platform_metrics_from_stats(
+                        delta_stats_json
+                    )
                 )
 
                 # Use the latest record's data for non-delta fields
                 latest = sorted_telemetry[-1]
 
-                # Create delta data
+                # Create delta data with dynamic stats
                 delta_data = NodeData(
                     hotkey=hotkey,
                     uid=latest.uid,
                     worker_id=latest.worker_id,
                     timestamp=self._convert_timestamp_to_int(latest.timestamp),
-                    boot_time=delta_boot_time,
-                    last_operation_time=delta_last_operation_time,
+                    boot_time=0,  # Not used in delta mode
+                    last_operation_time=0,  # Not used in delta mode
                     current_time=latest.current_time,
-                    twitter_auth_errors=delta_twitter_auth_errors,
-                    twitter_errors=delta_twitter_errors,
-                    twitter_ratelimit_errors=delta_twitter_ratelimit_errors,
-                    twitter_returned_other=delta_twitter_returned_other,
-                    twitter_returned_profiles=delta_twitter_returned_profiles,
-                    twitter_returned_tweets=delta_twitter_returned_tweets,
-                    twitter_scrapes=delta_twitter_scrapes,
-                    web_errors=delta_web_errors,
-                    web_success=delta_web_success,
-                    tiktok_transcription_success=delta_tiktok_transcription_success,
-                    tiktok_transcription_errors=delta_tiktok_transcription_errors,
+                    stats_json=delta_stats_json,
+                    platform_metrics=delta_platform_metrics,
                 )
+
+                # Populate legacy fields for backward compatibility
+                delta_data.populate_legacy_fields()
 
                 # Add custom attributes for error rate calculation
                 delta_data.time_span_seconds = total_time_span_seconds
-                delta_data.total_errors = (
-                    delta_twitter_auth_errors
-                    + delta_twitter_errors
-                    + delta_twitter_ratelimit_errors
-                )
+
+                # Calculate total errors dynamically from platform configs
+                total_errors = 0
+                for (
+                    platform_name,
+                    platform_config,
+                ) in platform_manager.get_all_platforms().items():
+                    for error_metric in platform_config.error_metrics:
+                        raw_field = platform_config.get_raw_field_name(error_metric)
+                        total_errors += delta_stats_json.get(raw_field, 0)
+                delta_data.total_errors = total_errors
 
                 delta_node_data.append(delta_data)
                 processed_hotkeys.add(hotkey)
-                logger.debug(
-                    f"Delta for {hotkey}: tweets={delta_twitter_returned_tweets}"
-                )
+                logger.debug(f"Delta for {hotkey}: {delta_stats_json}")
             else:
                 logger.debug(
                     f"Not enough telemetry data for {hotkey} to calculate deltas"
@@ -506,17 +488,8 @@ class WeightsManager:
                     boot_time=0,
                     last_operation_time=0,
                     current_time=0,
-                    twitter_auth_errors=0,
-                    twitter_errors=0,
-                    twitter_ratelimit_errors=0,
-                    twitter_returned_other=0,
-                    twitter_returned_profiles=0,
-                    twitter_returned_tweets=0,
-                    twitter_scrapes=0,
-                    web_errors=0,
-                    web_success=0,
-                    tiktok_transcription_success=0,
-                    tiktok_transcription_errors=0,
+                    stats_json={},  # Empty stats
+                    platform_metrics={},  # Empty platform metrics
                 )
                 # Add custom attributes for error rate calculation
                 delta_data.time_span_seconds = 0
@@ -537,17 +510,8 @@ class WeightsManager:
                     boot_time=0,
                     last_operation_time=0,
                     current_time=0,
-                    twitter_auth_errors=0,
-                    twitter_errors=0,
-                    twitter_ratelimit_errors=0,
-                    twitter_returned_other=0,
-                    twitter_returned_profiles=0,
-                    twitter_returned_tweets=0,
-                    twitter_scrapes=0,
-                    web_errors=0,
-                    web_success=0,
-                    tiktok_transcription_success=0,
-                    tiktok_transcription_errors=0,
+                    stats_json={},  # Empty stats
+                    platform_metrics={},  # Empty platform metrics
                 )
                 # Add custom attributes for error rate calculation
                 delta_data.time_span_seconds = 0
